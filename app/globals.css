@@ -162,10 +162,3 @@
     @apply bg-background text-foreground;
   }
 }
-
-
-/* Accessibility modes */
-.contrast-mode { filter: contrast(1.18); }
-.contrast-mode button, .contrast-mode input, .contrast-mode textarea, .contrast-mode select { outline-offset: 2px; }
-.emergency-mode aside nav button:nth-child(n+2) { display: none; }
-.emergency-mode main { max-width: 900px; }
