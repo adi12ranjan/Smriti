@@ -59,9 +59,9 @@ export function Reminders() {
               autoFocus
             />
             <input
+              type="time"
               value={time}
               onChange={(e) => setTime(e.target.value)}
-              placeholder="6:00 PM"
               aria-label="Time"
               className="rounded-xl border border-border bg-background px-4 py-3 outline-none focus:border-primary sm:w-32"
             />

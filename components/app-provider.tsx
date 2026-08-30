@@ -101,6 +101,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [userName, setUserName] = useState("")
   const [userAge, setUserAge] = useState("")
   const [onboardingDone, setOnboardingDone] = useState(false)
+  const [activeReminder, setActiveReminder] = useState<Reminder | null>(null)
+  const firedReminders = useRef<Record<string, string>>({})
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
@@ -151,8 +153,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
         window.speechSynthesis.cancel()
         const u = new SpeechSynthesisUtterance(text)
         const langInfo = LANGUAGES.find((l) => l.code === lang)
-        u.lang = langInfo?.speechLang ?? "en-IN"
+        const speechLang = langInfo?.speechLang ?? "en-IN"
+        u.lang = speechLang
         u.rate = 0.9
+        const voices = window.speechSynthesis.getVoices()
+        const wanted = speechLang.toLowerCase()
+        u.voice =
+          voices.find((v) => v.lang.toLowerCase() === wanted) ??
+          voices.find((v) => v.lang.toLowerCase().startsWith(wanted.split("-")[0])) ??
+          voices.find((v) => v.lang.toLowerCase().startsWith("en-in")) ??
+          voices[0]
         window.speechSynthesis.speak(u)
       } else {
         toast(text)
@@ -162,6 +172,36 @@ export function AppProvider({ children }: { children: ReactNode }) {
   )
 
   const speakKey = useCallback((key: TKey) => speak(translations[lang][key]), [lang, speak])
+
+  // Check reminders while the app is open. A visible popup and voice announcement
+  // are triggered once for each reminder at its scheduled local time.
+  useEffect(() => {
+    if (!onboardingDone) return
+    const check = () => {
+      const now = new Date()
+      const hh = now.getHours()
+      const mm = now.getMinutes()
+      const currentKey = `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}-${hh}:${mm}`
+      for (const reminder of reminders) {
+        if (reminder.done) continue
+        const match = reminder.time.trim().match(/^(\\d{1,2}):(\\d{2})\\s*(AM|PM)?$/i)
+        if (!match) continue
+        let hour = Number(match[1])
+        const minute = Number(match[2])
+        const ampm = match[3]?.toUpperCase()
+        if (ampm === "PM" && hour < 12) hour += 12
+        if (ampm === "AM" && hour === 12) hour = 0
+        if (hour === hh && minute === mm && firedReminders.current[reminder.id] !== currentKey) {
+          firedReminders.current[reminder.id] = currentKey
+          setActiveReminder(reminder)
+          speak(`${reminder.label}. It is time now.`)
+        }
+      }
+    }
+    check()
+    const id = window.setInterval(check, 1000)
+    return () => window.clearInterval(id)
+  }, [onboardingDone, reminders, speak])
 
   const setLang = useCallback(
     (code: LangCode) => {
@@ -256,6 +296,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
   return (
     <AppContext.Provider value={value}>
       <div style={{ fontSize: `${textScale}em` }}>{children}</div>
+      {activeReminder && (
+        <div className="fixed inset-0 z-[100] grid place-items-center bg-black/40 p-4" role="alertdialog" aria-modal="true">
+          <div className="w-full max-w-md rounded-3xl border border-primary/20 bg-card p-7 text-center shadow-2xl">
+            <div className="mx-auto grid size-16 place-items-center rounded-full bg-primary/10 text-3xl">{activeReminder.icon}</div>
+            <p className="mt-4 text-sm font-bold uppercase tracking-wide text-primary">Reminder</p>
+            <h2 className="mt-2 text-2xl font-extrabold">{activeReminder.label}</h2>
+            <p className="mt-2 text-muted-foreground">It is time now.</p>
+            <button
+              onClick={() => { toggleReminder(activeReminder.id); setActiveReminder(null) }}
+              className="mt-6 w-full rounded-2xl bg-primary px-5 py-4 font-extrabold text-primary-foreground"
+            >
+              Done
+            </button>
+            <button onClick={() => setActiveReminder(null)} className="mt-2 w-full rounded-2xl border border-border px-5 py-3 font-bold">
+              Close
+            </button>
+          </div>
+        </div>
+      )}
     </AppContext.Provider>
   )
 }

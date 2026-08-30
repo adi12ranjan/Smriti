@@ -13,7 +13,7 @@ const MOODS: Mood[] = [
 ]
 
 export function Onboarding() {
-  const { languages, saveProfile } = useApp()
+  const { languages, saveProfile, speak } = useApp()
   const [name, setName] = useState("")
   const [age, setAge] = useState("60+")
   const [language, setLanguage] = useState<LangCode>("en")
@@ -23,6 +23,8 @@ export function Onboarding() {
     e.preventDefault()
     if (!name.trim()) return
     saveProfile(name, age, language, mood)
+    // The login button is a user action, so this also unlocks browser speech audio.
+    speak(`Namaste ${name.trim()}. Your MindSathi is ready. Let us start.`)
   }
 
   return (
@@ -35,7 +37,15 @@ export function Onboarding() {
         <p className="mb-6 text-muted-foreground">Tell us a little about you. We’ll use this to make the app easier and more friendly for you.</p>
         <div className="grid gap-5">
           <label className="grid gap-2"><span className="font-bold">What should we call you?</span><input value={name} onChange={e=>setName(e.target.value)} required autoFocus placeholder="Your name" className="rounded-2xl border border-border bg-background px-4 py-3 outline-none focus:border-primary" /></label>
-          <label className="grid gap-2"><span className="font-bold">Your age group</span><select value={age} onChange={e=>setAge(e.target.value)} className="rounded-2xl border border-border bg-background px-4 py-3"><option>50–59</option><option>60+</option><option>Prefer not to say</option></select></label>
+          <label className="grid gap-2"><span className="font-bold">Your age group</span><select value={age} onChange={e=>setAge(e.target.value)} className="rounded-2xl border border-border bg-background px-4 py-3"><option>Under 50</option>
+            <option>50–55</option>
+            <option>56–60</option>
+            <option>61–65</option>
+            <option>66–70</option>
+            <option>71–75</option>
+            <option>76–80</option>
+            <option>80+</option>
+            <option>Prefer not to say</option></select></label>
           <div><p className="mb-2 font-bold">Which language feels easiest?</p><div className="grid grid-cols-2 gap-2 sm:grid-cols-3">{languages.map(l=><button type="button" key={l.code} onClick={()=>setLanguage(l.code)} className={`rounded-2xl border-2 p-3 text-left ${language===l.code?"border-primary bg-primary/10":"border-border"}`}><b>{l.native}</b><small className="block text-muted-foreground">{l.name}</small></button>)}</div></div>
           <div><p className="mb-2 font-bold">How are you feeling today?</p><div className="grid grid-cols-4 gap-2">{MOODS.map(m=><button type="button" key={m.label} onClick={()=>setMood(m)} className={`rounded-2xl border-2 p-3 ${mood.label===m.label?"border-primary bg-primary/10":"border-border"}`}><span className="text-3xl">{m.emoji}</span><small className="mt-1 block font-semibold">{m.label}</small></button>)}</div></div>
         </div>
