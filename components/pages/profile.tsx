@@ -1,56 +1,5 @@
 "use client"
-
-import { Volume2, Type, WifiOff, Languages, Minus, Plus } from "lucide-react"
+import { Volume2,Type,WifiOff,Languages,Minus,Plus,Contrast,ShieldAlert,Phone } from "lucide-react"
 import { useApp } from "@/components/app-provider"
-import { Panel, Tag, Pill } from "@/components/ui-bits"
-
-export function Profile() {
-  const { t, speakKey, textScale, setTextScale, toast, navigate, lang, languages } = useApp()
-  const currentLang = languages.find((l) => l.code === lang)
-
-  return (
-    <div className="space-y-5">
-      <header>
-        <h1 className="text-3xl font-extrabold tracking-tight">
-          {t("profileTitle")} <span aria-hidden>⚙️</span>
-        </h1>
-        <p className="mt-1 max-w-2xl text-muted-foreground">{t("profileSubtitle")}</p>
-      </header>
-
-      <Panel className="max-w-2xl">
-        <div className="flex items-center justify-between border-b border-border py-4">
-          <span className="flex items-center gap-3 font-bold">
-            <Volume2 className="size-5 text-primary" aria-hidden /> {t("voiceAssist")}
-          </span>
-          <Pill onClick={() => speakKey("v_welcome")}>{t("testVoice")}</Pill>
-        </div>
-
-        <div className="border-b border-border py-4">
-          <div className="flex items-center gap-3 font-bold"><Type className="size-5 text-primary" aria-hidden /> {t("largeText")}</div>
-          <div className="mt-4 flex items-center gap-3">
-            <button onClick={() => setTextScale(textScale - 0.1)} className="grid size-10 place-items-center rounded-xl border border-border" aria-label="Decrease text size"><Minus className="size-4" /></button>
-            <input aria-label="Text magnification" type="range" min="1" max="1.8" step="0.1" value={textScale} onChange={e => setTextScale(Number(e.target.value))} className="w-full accent-primary" />
-            <button onClick={() => setTextScale(textScale + 0.1)} className="grid size-10 place-items-center rounded-xl border border-border" aria-label="Increase text size"><Plus className="size-4" /></button>
-          </div>
-          <div className="mt-2 flex justify-between text-sm text-muted-foreground"><span>Normal</span><b className="text-primary">{Math.round(textScale * 100)}%</b><span>Very large</span></div>
-          <p className="mt-2 text-xs text-muted-foreground">Move the slider to make words easier to read. The size is saved for your next visit.</p>
-        </div>
-        <div className="flex items-center justify-between border-b border-border py-4">
-          <span className="flex items-center gap-3 font-bold">
-            <WifiOff className="size-5 text-primary" aria-hidden /> {t("offlineMode")}
-          </span>
-          <Tag tone="green">{t("ready")}</Tag>
-        </div>
-
-        <div className="flex items-center justify-between py-4">
-          <span className="flex items-center gap-3 font-bold">
-            <Languages className="size-5 text-primary" aria-hidden /> {t("language")}
-          </span>
-          <Pill onClick={() => navigate("language")}>
-            {currentLang?.native} · {t("change")}
-          </Pill>
-        </div>
-      </Panel>
-    </div>
-  )
-}
+import { Panel,Tag,Pill } from "@/components/ui-bits"
+export function Profile(){const {t,speakKey,textScale,setTextScale,navigate,lang,languages,availableVoices,selectedVoiceName,setSelectedVoiceName,contrast,setContrast,emergencyMode,setEmergencyMode,caregiverPhone,badges}=useApp();const currentLang=languages.find(l=>l.code===lang);return <div className="space-y-5"><header><h1 className="text-3xl font-extrabold">{t("profileTitle")} ⚙️</h1><p className="mt-1 text-muted-foreground">{t("profileSubtitle")}</p></header><Panel className="max-w-3xl"><div className="flex items-center justify-between border-b py-4"><span className="flex items-center gap-3 font-bold"><Volume2 className="size-5 text-primary"/>Voice assistance</span><Pill onClick={()=>speakKey("v_welcome")}>Test voice</Pill></div><div className="border-b py-4"><div className="flex items-center gap-3 font-bold"><Type className="size-5 text-primary"/>Large text</div><div className="mt-4 flex items-center gap-3"><button onClick={()=>setTextScale(textScale-.1)} className="grid size-10 place-items-center rounded-xl border"><Minus className="size-4"/></button><input aria-label="Text size" type="range" min="1" max="1.8" step=".1" value={textScale} onChange={e=>setTextScale(+e.target.value)} className="w-full"/><button onClick={()=>setTextScale(textScale+.1)} className="grid size-10 place-items-center rounded-xl border"><Plus className="size-4"/></button></div><div className="mt-2 flex justify-between text-sm"><span>Normal</span><b>{Math.round(textScale*100)}%</b><span>Very large</span></div></div><div className="flex items-center justify-between border-b py-4"><span className="flex items-center gap-3 font-bold"><Contrast className="size-5 text-primary"/>High contrast</span><button onClick={()=>setContrast(!contrast)}><Tag tone={contrast?"primary":"green"}>{contrast?"On":"Off"}</Tag></button></div><div className="flex items-center justify-between border-b py-4"><span className="flex items-center gap-3 font-bold"><ShieldAlert className="size-5 text-primary"/>Simplified emergency mode</span><button onClick={()=>setEmergencyMode(!emergencyMode)}><Tag tone={emergencyMode?"amber":"green"}>{emergencyMode?"On":"Off"}</Tag></button></div><div className="border-b py-4"><b>Voice selection</b><select value={selectedVoiceName??""} onChange={e=>setSelectedVoiceName(e.target.value||null)} className="mt-2 w-full rounded-xl border p-3"><option value="">Automatic best voice</option>{availableVoices.map(v=><option key={`${v.name}-${v.lang}`} value={v.name}>{v.name} ({v.lang})</option>)}</select></div><div className="flex items-center justify-between border-b py-4"><span className="flex items-center gap-3 font-bold"><Languages className="size-5 text-primary"/>Language</span><Pill onClick={()=>navigate("language")}>{currentLang?.native} · Change</Pill></div><div className="flex items-center justify-between py-4"><span className="flex items-center gap-3 font-bold"><Phone className="size-5 text-primary"/>Trusted caregiver</span>{caregiverPhone?<a className="font-bold text-primary" href={`tel:${caregiverPhone}`}>Call caregiver</a>:<span className="text-sm text-muted-foreground">Add one in Caregiver View</span>}</div><div className="border-t py-4"><b>Achievements</b><div className="mt-2 flex flex-wrap gap-2">{badges.length?badges.map(b=><Tag key={b} tone="primary">🏅 {b}</Tag>):<span className="text-sm text-muted-foreground">Complete games to earn badges.</span>}</div></div><div className="mt-3 rounded-2xl bg-muted p-4 text-sm text-muted-foreground"><WifiOff className="mr-2 inline size-4"/>Core data is stored locally in this prototype. Real deployment needs secure server-side authentication and encrypted data.</div></Panel></div>}
