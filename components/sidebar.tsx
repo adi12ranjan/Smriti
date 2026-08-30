@@ -9,6 +9,7 @@ import {
   Users,
   Settings,
   Brain,
+  LogOut,
 } from "lucide-react"
 import { useApp, type PageId } from "@/components/app-provider"
 import type { TKey } from "@/lib/i18n"
@@ -24,7 +25,7 @@ const NAV: { id: PageId; icon: typeof Brain; labelKey: TKey }[] = [
 ]
 
 export function Sidebar() {
-  const { page, navigate, t, userName } = useApp()
+  const { page, navigate, t, userName, logout } = useApp()
 
   return (
     <aside className="fixed inset-y-0 left-0 z-20 flex w-[76px] flex-col bg-sidebar px-3 py-6 text-sidebar-foreground md:w-64 md:px-4">
@@ -32,7 +33,7 @@ export function Sidebar() {
         <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-primary to-[oklch(0.7_0.15_230)] text-primary-foreground">
           <Brain className="size-5" aria-hidden />
         </div>
-        <span className="hidden text-xl font-extrabold tracking-tight md:block">MindSathi</span>
+        <span className="hidden text-xl font-extrabold tracking-tight md:block">Smriti</span>
       </div>
 
       <nav className="flex flex-col gap-1.5" aria-label="Primary">
@@ -57,15 +58,32 @@ export function Sidebar() {
         })}
       </nav>
 
-      <div className="mt-auto hidden items-center gap-3 rounded-2xl bg-sidebar-accent/70 p-3.5 md:flex">
-        <div className="grid size-10 place-items-center rounded-full bg-[oklch(0.82_0.06_60)] font-extrabold text-[oklch(0.35_0.05_50)]">
-          AK
+      <div className="mt-auto hidden flex-col gap-2 md:flex">
+        <div className="flex items-center gap-3 rounded-2xl bg-sidebar-accent/70 p-3.5">
+          <div className="grid size-10 place-items-center rounded-full bg-[oklch(0.82_0.06_60)] font-extrabold text-[oklch(0.35_0.05_50)]">
+            {userName ? userName.slice(0, 2).toUpperCase() : "SM"}
+          </div>
+          <div className="leading-tight">
+            <p className="font-bold">{userName || "Smriti User"}</p>
+            <p className="text-xs text-sidebar-foreground/55">{t("patientMode")}</p>
+          </div>
         </div>
-        <div className="leading-tight">
-          <p className="font-bold">{userName || "MindSathi User"}</p>
-          <p className="text-xs text-sidebar-foreground/55">{t("patientMode")}</p>
-        </div>
+        <button
+          onClick={logout}
+          className="flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm font-semibold text-sidebar-foreground/65 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground transition-colors"
+        >
+          <LogOut className="size-4 shrink-0" />
+          <span>Logout</span>
+        </button>
       </div>
+      {/* Mobile logout */}
+      <button
+        onClick={logout}
+        title="Logout"
+        className="mt-auto flex items-center justify-center rounded-xl px-3 py-3 text-sidebar-foreground/65 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground transition-colors md:hidden"
+      >
+        <LogOut className="size-5" />
+      </button>
     </aside>
   )
 }

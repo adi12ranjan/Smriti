@@ -6,9 +6,9 @@ import './globals.css'
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' })
 
 export const metadata: Metadata = {
-  title: 'MindSathi — AI Cognitive Care',
+  title: 'Smriti — AI Cognitive Care',
   description:
-    'MindSathi is a multilingual, voice-first AI companion for cognitive care: adaptive brain-training games, memory coaching, reminders and caregiver insights.',
+    'Smriti is a multilingual, voice-first AI companion for cognitive care: adaptive brain-training games, memory coaching, reminders and caregiver insights.',
   generator: 'v0.app',
 }
 

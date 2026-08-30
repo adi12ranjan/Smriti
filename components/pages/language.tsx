@@ -1,12 +1,12 @@
 "use client"
 
-import { Volume2, Check } from "lucide-react"
+import { Volume2, Check, Mic } from "lucide-react"
 import { useApp } from "@/components/app-provider"
 import { Panel, Tag } from "@/components/ui-bits"
 import type { TKey } from "@/lib/i18n"
 
 export function Language() {
-  const { t, languages, lang, setLang, speakKey } = useApp()
+  const { t, languages, lang, setLang, speakKey, speak, selectedVoiceName, setSelectedVoiceName, availableVoices } = useApp()
 
   const voiceItems: { labelKey: TKey; voiceKey: TKey }[] = [
     { labelKey: "readInstructions", voiceKey: "v_instructions" },
@@ -21,6 +21,31 @@ export function Language() {
     { tKey: "step3t", dKey: "step3d" },
     { tKey: "step4t", dKey: "step4d" },
   ]
+
+  // Filter to show Indian and English voices prominently
+  const indianVoices = availableVoices.filter(v =>
+    v.lang.includes("IN") || v.lang.startsWith("hi") || v.lang.startsWith("bn") ||
+    v.lang.startsWith("as") || v.lang.startsWith("en-IN")
+  )
+  const otherVoices = availableVoices.filter(v => !indianVoices.includes(v))
+  const voiceGroups = [
+    { label: "🇮🇳 Indian & Hindi Voices (Recommended)", voices: indianVoices },
+    { label: "🌐 Other Available Voices", voices: otherVoices },
+  ]
+
+  function testVoice(voiceName: string) {
+    const prev = selectedVoiceName
+    setSelectedVoiceName(voiceName)
+    // Use a timeout to let state update before speaking
+    setTimeout(() => {
+      const u = new SpeechSynthesisUtterance("Namaste! Yeh Smriti hai. Main aapki madad karunga.")
+      const voice = window.speechSynthesis.getVoices().find(v => v.name === voiceName)
+      if (voice) { u.voice = voice; u.lang = voice.lang }
+      u.rate = 0.85
+      window.speechSynthesis.cancel()
+      window.speechSynthesis.speak(u)
+    }, 100)
+  }
 
   return (
     <div className="space-y-5">
@@ -88,6 +113,59 @@ export function Language() {
           </div>
         </Panel>
       </div>
+
+      {/* Voice Selection Panel */}
+      <Panel>
+        <div className="flex items-center gap-3 mb-1">
+          <Mic className="size-5 text-primary" />
+          <h3 className="text-lg font-bold">🎤 Choose Voice</h3>
+        </div>
+        <p className="text-sm text-muted-foreground mb-4">
+          Select the voice Smriti uses to speak. Indian voices sound most natural for everyday language used in India.
+          {selectedVoiceName && <span className="ml-1 font-semibold text-primary">Current: {selectedVoiceName}</span>}
+        </p>
+
+        {availableVoices.length === 0 ? (
+          <div className="rounded-2xl bg-amber-50 border border-amber-200 p-4 text-sm text-amber-800">
+            ⚠️ No voices found. Please use Chrome or Edge browser, or check your device text-to-speech settings.
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {voiceGroups.map(group => group.voices.length === 0 ? null : (
+              <div key={group.label}>
+                <p className="mb-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">{group.label}</p>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {group.voices.map(voice => {
+                    const isSelected = selectedVoiceName === voice.name
+                    return (
+                      <div
+                        key={voice.name}
+                        className={`flex items-center justify-between rounded-xl border-2 px-3 py-2.5 transition-colors ${
+                          isSelected ? "border-primary bg-primary/8" : "border-border bg-card"
+                        }`}
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-semibold">{voice.name}</p>
+                          <p className="text-xs text-muted-foreground">{voice.lang} {voice.localService ? "· Offline" : "· Online"}</p>
+                        </div>
+                        <div className="ml-2 flex shrink-0 gap-1.5">
+                          <button
+                            onClick={() => testVoice(voice.name)}
+                            className="rounded-lg bg-muted px-2 py-1.5 text-xs font-bold text-primary hover:bg-primary/10"
+                          >
+                            ▶ Test
+                          </button>
+                          {isSelected && <Check className="size-4 text-primary self-center" />}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Panel>
 
       <Panel>
         <h3 className="mb-4 text-lg font-bold">{t("howItWorks")}</h3>

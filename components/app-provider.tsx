@@ -45,6 +45,22 @@ const INITIAL_REMINDERS: Reminder[] = [
   { id: "r4", icon: "👨‍⚕️", label: "Doctor appointment", time: "Sun, 10:30 AM", done: false },
 ]
 
+const STORAGE_KEY = "smriti-profile"
+const AUTH_KEY = "smriti-users"
+const SESSION_KEY = "smriti-session"
+
+type AuthUser = { username: string; passwordHash: string; displayName: string }
+
+// Simple hash for password storage (not cryptographic — client-side only demo)
+function simpleHash(str: string): string {
+  let hash = 0
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) - hash) + str.charCodeAt(i)
+    hash |= 0
+  }
+  return hash.toString(36)
+}
+
 type AppContextType = {
   lang: LangCode
   setLang: (code: LangCode) => void
@@ -52,7 +68,6 @@ type AppContextType = {
   languages: typeof LANGUAGES
   page: PageId
   navigate: (page: PageId) => void
-  // voice
   speak: (text: string) => void
   speakKey: (key: TKey) => void
   textScale: number
@@ -61,24 +76,31 @@ type AppContextType = {
   userAge: string
   onboardingDone: boolean
   saveProfile: (name: string, age: string, language: LangCode, mood: Mood) => void
-  // reminders
   reminders: Reminder[]
   toggleReminder: (id: string) => void
   deleteReminder: (id: string) => void
   addReminder: (label: string, time: string, icon: string) => void
-  // mood
   mood: Mood
   cycleMood: () => void
   moods: Mood[]
   setMood: (m: Mood) => void
-  // toast
   toast: (msg: string) => void
   toastMsg: string | null
-  // score
   score: number
   addPoints: (n: number) => void
   gamesCompleted: number
   completeGame: () => void
+  // auth
+  isLoggedIn: boolean
+  login: (username: string, password: string) => boolean
+  signup: (username: string, password: string, displayName: string) => boolean
+  logout: () => void
+  authError: string | null
+  setAuthError: (e: string | null) => void
+  // voice selection
+  selectedVoiceName: string | null
+  setSelectedVoiceName: (name: string | null) => void
+  availableVoices: SpeechSynthesisVoice[]
 }
 
 const AppContext = createContext<AppContextType | null>(null)
@@ -105,9 +127,71 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const firedReminders = useRef<Record<string, string>>({})
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  // Auth state
+  const [isLoggedIn, setIsLoggedIn] = useState(false)
+  const [authError, setAuthError] = useState<string | null>(null)
+
+  // Voice selection state
+  const [selectedVoiceName, setSelectedVoiceNameState] = useState<string | null>(null)
+  const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([])
+  const voicesLoaded = useRef(false)
+
+  // Load voices
+  useEffect(() => {
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) return
+    const load = () => {
+      const voices = window.speechSynthesis.getVoices()
+      if (voices.length > 0 && !voicesLoaded.current) {
+        voicesLoaded.current = true
+        setAvailableVoices(voices)
+        // Auto-select a good Indian English voice if none selected
+        setSelectedVoiceNameState(prev => {
+          if (prev) return prev
+          // Priority: Google हिन्दी, Google India English, Microsoft Heera, any en-IN
+          const preferred =
+            voices.find(v => v.name.includes("Google हिन्दी")) ??
+            voices.find(v => v.name.toLowerCase().includes("google") && v.lang === "hi-IN") ??
+            voices.find(v => v.name.toLowerCase().includes("heera")) ??
+            voices.find(v => v.name.toLowerCase().includes("ravi")) ??
+            voices.find(v => v.lang === "hi-IN") ??
+            voices.find(v => v.lang === "en-IN") ??
+            voices.find(v => v.lang.startsWith("en-IN")) ??
+            voices.find(v => v.lang.startsWith("en")) ??
+            null
+          return preferred?.name ?? null
+        })
+      }
+    }
+    load()
+    window.speechSynthesis.onvoiceschanged = load
+    return () => { window.speechSynthesis.onvoiceschanged = null }
+  }, [])
+
+  const setSelectedVoiceName = useCallback((name: string | null) => {
+    setSelectedVoiceNameState(name)
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY)
+      const p = raw ? JSON.parse(raw) : {}
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...p, selectedVoiceName: name }))
+    } catch {}
+  }, [])
+
+  // Check session on mount
   useEffect(() => {
     try {
-      const raw = localStorage.getItem("mind-sathi-profile")
+      const session = localStorage.getItem(SESSION_KEY)
+      if (session) {
+        const s = JSON.parse(session)
+        if (s.loggedIn && s.username) {
+          setIsLoggedIn(true)
+        }
+      }
+    } catch {}
+  }, [])
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY)
       if (raw) {
         const p = JSON.parse(raw)
         if (p.name) setUserName(p.name)
@@ -116,17 +200,63 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (p.mood) setMoodState(p.mood)
         if (p.textScale) setTextScaleState(Number(p.textScale))
         if (p.name) setOnboardingDone(true)
+        if (p.selectedVoiceName !== undefined) setSelectedVoiceNameState(p.selectedVoiceName)
       }
     } catch {}
+  }, [])
+
+  const login = useCallback((username: string, password: string): boolean => {
+    try {
+      const usersRaw = localStorage.getItem(AUTH_KEY)
+      const users: AuthUser[] = usersRaw ? JSON.parse(usersRaw) : []
+      const user = users.find(u => u.username.toLowerCase() === username.toLowerCase())
+      if (!user) { setAuthError("User not found. Please sign up first."); return false }
+      if (user.passwordHash !== simpleHash(password)) { setAuthError("Incorrect password."); return false }
+      setIsLoggedIn(true)
+      setAuthError(null)
+      localStorage.setItem(SESSION_KEY, JSON.stringify({ loggedIn: true, username: user.username }))
+      return true
+    } catch { setAuthError("Something went wrong. Try again."); return false }
+  }, [])
+
+  const signup = useCallback((username: string, password: string, displayName: string): boolean => {
+    if (!username.trim() || !password.trim() || !displayName.trim()) {
+      setAuthError("All fields are required."); return false
+    }
+    if (password.length < 4) { setAuthError("Password must be at least 4 characters."); return false }
+    try {
+      const usersRaw = localStorage.getItem(AUTH_KEY)
+      const users: AuthUser[] = usersRaw ? JSON.parse(usersRaw) : []
+      if (users.find(u => u.username.toLowerCase() === username.toLowerCase())) {
+        setAuthError("Username already taken. Try another."); return false
+      }
+      users.push({ username, passwordHash: simpleHash(password), displayName })
+      localStorage.setItem(AUTH_KEY, JSON.stringify(users))
+      setIsLoggedIn(true)
+      setAuthError(null)
+      localStorage.setItem(SESSION_KEY, JSON.stringify({ loggedIn: true, username }))
+      return true
+    } catch { setAuthError("Something went wrong. Try again."); return false }
+  }, [])
+
+  const logout = useCallback(() => {
+    setIsLoggedIn(false)
+    setOnboardingDone(false)
+    setUserName("")
+    localStorage.removeItem(SESSION_KEY)
+    localStorage.removeItem(STORAGE_KEY)
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      window.speechSynthesis.cancel()
+    }
   }, [])
 
   const setTextScale = useCallback((v: number) => {
     const next = Math.max(1, Math.min(1.8, v))
     setTextScaleState(next)
     try {
-      const raw = localStorage.getItem("mind-sathi-profile")
+      const raw = localStorage.getItem(STORAGE_KEY)
       const p = raw ? JSON.parse(raw) : {}
-      localStorage.setItem("mind-sathi-profile", JSON.stringify({ ...p, textScale: next }))
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...p, textScale: next }))
     } catch {}
   }, [])
 
@@ -136,7 +266,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setLangState(language)
     setMoodState(selectedMood)
     setOnboardingDone(true)
-    localStorage.setItem("mind-sathi-profile", JSON.stringify({ name: name.trim(), age, lang: language, mood: selectedMood, textScale }))
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ name: name.trim(), age, lang: language, mood: selectedMood, textScale }))
   }, [textScale])
 
   const t = useCallback((key: TKey) => translations[lang][key], [lang])
@@ -147,34 +277,49 @@ export function AppProvider({ children }: { children: ReactNode }) {
     toastTimer.current = setTimeout(() => setToastMsg(null), 2600)
   }, [])
 
+  // Speak function — uses user-selected voice with Indian accent priority
   const speak = useCallback(
     (text: string) => {
       if (typeof window !== "undefined" && "speechSynthesis" in window) {
         window.speechSynthesis.cancel()
         const u = new SpeechSynthesisUtterance(text)
         const langInfo = LANGUAGES.find((l) => l.code === lang)
-        const speechLang = langInfo?.speechLang ?? "en-IN"
+        const speechLang = langInfo?.speechLang ?? "hi-IN"
         u.lang = speechLang
-        u.rate = 0.9
+
+        // Slower, clearer rate for elderly users
+        u.rate = 0.82
+        u.pitch = 1.0
+        u.volume = 1.0
+
         const voices = window.speechSynthesis.getVoices()
-        const wanted = speechLang.toLowerCase()
-        u.voice =
-          voices.find((v) => v.lang.toLowerCase() === wanted) ??
-          voices.find((v) => v.lang.toLowerCase().startsWith(wanted.split("-")[0])) ??
-          voices.find((v) => v.lang.toLowerCase().startsWith("en-in")) ??
-          voices[0]
+
+        if (selectedVoiceName) {
+          // Use user-selected voice
+          const picked = voices.find(v => v.name === selectedVoiceName)
+          if (picked) { u.voice = picked }
+        } else {
+          // Auto-pick best Indian voice
+          const wanted = speechLang.toLowerCase()
+          u.voice =
+            voices.find(v => v.lang.toLowerCase() === wanted) ??
+            voices.find(v => v.lang.toLowerCase().startsWith(wanted.split("-")[0])) ??
+            voices.find(v => v.lang.toLowerCase().startsWith("hi-in")) ??
+            voices.find(v => v.lang.toLowerCase().startsWith("en-in")) ??
+            voices[0]
+        }
+
         window.speechSynthesis.speak(u)
       } else {
         toast(text)
       }
     },
-    [lang, toast],
+    [lang, toast, selectedVoiceName],
   )
 
   const speakKey = useCallback((key: TKey) => speak(translations[lang][key]), [lang, speak])
 
-  // Check reminders while the app is open. A visible popup and voice announcement
-  // are triggered once for each reminder at its scheduled local time.
+  // Reminder checker — fires once per minute when time matches
   useEffect(() => {
     if (!onboardingDone) return
     const check = () => {
@@ -184,7 +329,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const currentKey = `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}-${hh}:${mm}`
       for (const reminder of reminders) {
         if (reminder.done) continue
-        const match = reminder.time.trim().match(/^(\\d{1,2}):(\\d{2})\\s*(AM|PM)?$/i)
+        const match = reminder.time.trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/i)
         if (!match) continue
         let hour = Number(match[1])
         const minute = Number(match[2])
@@ -194,26 +339,33 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (hour === hh && minute === mm && firedReminders.current[reminder.id] !== currentKey) {
           firedReminders.current[reminder.id] = currentKey
           setActiveReminder(reminder)
-          speak(`${reminder.label}. It is time now.`)
         }
       }
     }
     check()
     const id = window.setInterval(check, 1000)
     return () => window.clearInterval(id)
-  }, [onboardingDone, reminders, speak])
+  }, [onboardingDone, reminders])
+
+  // Speak active reminder aloud when it appears
+  useEffect(() => {
+    if (!activeReminder) return
+    const msg = `Reminder: ${activeReminder.label}. It is time now.`
+    // Small delay so the popup renders first and user gesture is satisfied
+    const id = window.setTimeout(() => speak(msg), 400)
+    return () => window.clearTimeout(id)
+  }, [activeReminder, speak])
 
   const setLang = useCallback(
     (code: LangCode) => {
       setLangState(code)
       const name = translations[code].langName
       toast(`${translations[code].languageChanged} ${name}`)
-      // Speak welcome in the newly selected language
       if (typeof window !== "undefined" && "speechSynthesis" in window) {
         window.speechSynthesis.cancel()
         const u = new SpeechSynthesisUtterance(translations[code].v_welcome)
-        u.lang = LANGUAGES.find((l) => l.code === code)?.speechLang ?? "en-IN"
-        u.rate = 0.9
+        u.lang = LANGUAGES.find((l) => l.code === code)?.speechLang ?? "hi-IN"
+        u.rate = 0.82
         window.speechSynthesis.speak(u)
       }
     },
@@ -257,60 +409,69 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<AppContextType>(
     () => ({
-      lang,
-      setLang,
-      t,
-      languages: LANGUAGES,
-      page,
-      navigate,
-      speak,
-      speakKey,
-      textScale,
-      setTextScale,
-      userName,
-      userAge,
-      onboardingDone,
-      saveProfile,
-      reminders,
-      toggleReminder,
-      deleteReminder,
-      addReminder,
-      mood,
-      cycleMood,
-      moods: MOODS,
-      setMood,
-      toast,
-      toastMsg,
-      score,
-      addPoints,
-      gamesCompleted,
-      completeGame,
+      lang, setLang, t, languages: LANGUAGES, page, navigate,
+      speak, speakKey, textScale, setTextScale,
+      userName, userAge, onboardingDone, saveProfile,
+      reminders, toggleReminder, deleteReminder, addReminder,
+      mood, cycleMood, moods: MOODS, setMood,
+      toast, toastMsg,
+      score, addPoints, gamesCompleted, completeGame,
+      isLoggedIn, login, signup, logout, authError, setAuthError,
+      selectedVoiceName, setSelectedVoiceName, availableVoices,
     }),
     [
-      lang, setLang, t, page, navigate, speak, speakKey, textScale, setTextScale, userName, userAge,
-      onboardingDone, saveProfile, reminders, toggleReminder, deleteReminder, addReminder, mood, cycleMood, setMood, toast, toastMsg,
+      lang, setLang, t, page, navigate, speak, speakKey, textScale, setTextScale,
+      userName, userAge, onboardingDone, saveProfile,
+      reminders, toggleReminder, deleteReminder, addReminder,
+      mood, cycleMood, setMood, toast, toastMsg,
       score, addPoints, gamesCompleted, completeGame,
+      isLoggedIn, login, signup, logout, authError, setAuthError,
+      selectedVoiceName, setSelectedVoiceName, availableVoices,
     ],
   )
 
   return (
     <AppContext.Provider value={value}>
       <div style={{ fontSize: `${textScale}em` }}>{children}</div>
+
+      {/* Reminder Pop-up Notification */}
       {activeReminder && (
-        <div className="fixed inset-0 z-[100] grid place-items-center bg-black/40 p-4" role="alertdialog" aria-modal="true">
-          <div className="w-full max-w-md rounded-3xl border border-primary/20 bg-card p-7 text-center shadow-2xl">
-            <div className="mx-auto grid size-16 place-items-center rounded-full bg-primary/10 text-3xl">{activeReminder.icon}</div>
-            <p className="mt-4 text-sm font-bold uppercase tracking-wide text-primary">Reminder</p>
+        <div
+          className="fixed inset-0 z-[100] grid place-items-center bg-black/50 p-4"
+          role="alertdialog"
+          aria-modal="true"
+          aria-label="Reminder notification"
+        >
+          <div className="w-full max-w-md animate-in fade-in zoom-in-95 rounded-3xl border border-primary/20 bg-card p-7 text-center shadow-2xl">
+            <div className="relative mx-auto grid size-20 place-items-center rounded-full bg-primary/10 text-4xl">
+              {activeReminder.icon}
+              <span className="absolute -right-1 -top-1 flex size-5 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white animate-pulse">!</span>
+            </div>
+            <p className="mt-5 text-sm font-bold uppercase tracking-widest text-primary">⏰ Reminder</p>
             <h2 className="mt-2 text-2xl font-extrabold">{activeReminder.label}</h2>
-            <p className="mt-2 text-muted-foreground">It is time now.</p>
+            <p className="mt-2 text-muted-foreground">It is time now. Please don't forget!</p>
+            <div className="mt-3 flex items-center justify-center gap-2 text-sm text-muted-foreground">
+              <span className="rounded-full bg-muted px-3 py-1 font-semibold">{activeReminder.time}</span>
+            </div>
+            <button
+              onClick={() => {
+                speak(`${activeReminder.label}. It is time now.`)
+              }}
+              className="mt-5 w-full rounded-2xl border border-primary/30 bg-primary/10 px-5 py-3 font-bold text-primary hover:bg-primary/20"
+            >
+              🔊 Read Again
+            </button>
             <button
               onClick={() => { toggleReminder(activeReminder.id); setActiveReminder(null) }}
-              className="mt-6 w-full rounded-2xl bg-primary px-5 py-4 font-extrabold text-primary-foreground"
+              className="mt-2 w-full rounded-2xl bg-primary px-5 py-4 font-extrabold text-primary-foreground"
             >
-              Done
+              ✓ Mark as Done
             </button>
-            <button onClick={() => setActiveReminder(null)} className="mt-2 w-full rounded-2xl border border-border px-5 py-3 font-bold">
-              Close
+            <button
+              onClick={() => setActiveReminder(null)}
+              className="mt-2 w-full rounded-2xl border border-border px-5 py-3 font-bold hover:bg-muted"
+            >
+              Dismiss
             </button>
           </div>
         </div>

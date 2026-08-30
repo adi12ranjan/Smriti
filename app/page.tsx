@@ -11,6 +11,7 @@ import { Language } from "@/components/pages/language"
 import { Caregiver } from "@/components/pages/caregiver"
 import { Profile } from "@/components/pages/profile"
 import { Onboarding } from "@/components/onboarding"
+import { AuthScreen } from "@/components/auth-screen"
 
 function CurrentPage() {
   const { page, onboardingDone } = useApp()
@@ -33,18 +34,26 @@ function CurrentPage() {
   }
 }
 
+function App() {
+  const { isLoggedIn } = useApp()
+  if (!isLoggedIn) return <AuthScreen />
+  return (
+    <div className="min-h-screen bg-background">
+      <Sidebar />
+      <main className="ml-[76px] px-4 py-6 md:ml-64 md:px-8 md:py-7">
+        <div className="mx-auto max-w-6xl">
+          <CurrentPage />
+        </div>
+      </main>
+      <Toast />
+    </div>
+  )
+}
+
 export default function Page() {
   return (
     <AppProvider>
-      <div className="min-h-screen bg-background">
-        <Sidebar />
-        <main className="ml-[76px] px-4 py-6 md:ml-64 md:px-8 md:py-7">
-          <div className="mx-auto max-w-6xl">
-            <CurrentPage />
-          </div>
-        </main>
-        <Toast />
-      </div>
+      <App />
     </AppProvider>
   )
 }

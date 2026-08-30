@@ -47,7 +47,7 @@ export function Games() {
           </div>
           <div className="rounded-2xl border-2 border-primary/30 bg-primary/5 p-5">
             <div className="text-4xl">👨‍👩‍👧‍👦</div><b className="mt-3 block text-lg">Family Name Challenge</b>
-            <p className="mt-1 text-sm text-muted-foreground">Use family photos. One correct photo and three random family-photo choices appear for every question.</p>
+            <p className="mt-1 text-sm text-muted-foreground">Upload family photos and name them. You'll see a photo and pick the right name from 4 similar-looking options.</p>
             <button onClick={() => setActive("family")} className="mt-4 w-full rounded-xl bg-primary py-3 font-extrabold text-primary-foreground">Set up game</button>
           </div>
         </div>
@@ -81,12 +81,8 @@ function MindSprint({ onExit }: { onExit: () => void }) {
   const [round, setRound] = useState(1)
   const [score, setScore] = useState(0)
 
-  const levelSize = Math.min(8, round + 1) // Level 1 = 2 images, Level 2 = 3, ... Level 7 = 8.
+  const levelSize = Math.min(8, round + 1)
   const targetIndex = levelSize - 1
-
-  function makeSequence() {
-    return shuffle(SPRINT_IMAGES).slice(0, levelSize)
-  }
 
   function startLevel(level = 1) {
     setRound(level)
@@ -95,9 +91,7 @@ function MindSprint({ onExit }: { onExit: () => void }) {
     setPhase("show")
   }
 
-  useEffect(() => {
-    startLevel(1)
-  }, [])
+  useEffect(() => { startLevel(1) }, [])
 
   useEffect(() => {
     if (phase !== "show" || sequence.length === 0) return
@@ -150,7 +144,6 @@ function MindSprint({ onExit }: { onExit: () => void }) {
         <h2 className="text-2xl font-extrabold">⚡ Mind Sprint</h2>
         <p className="text-muted-foreground">Level {round}: remember these {levelSize} pictures.</p>
       </div>
-
       <div className="my-6 min-h-64 rounded-3xl border-2 border-dashed border-primary/30 bg-muted/30 p-5">
         {phase === "show" ? (
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
@@ -167,7 +160,6 @@ function MindSprint({ onExit }: { onExit: () => void }) {
           </div>
         )}
       </div>
-
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {choices.map((item) => (
           <button key={item.src} onClick={() => answer(item)} className="rounded-2xl border-2 border-border bg-card p-3 hover:border-primary">
@@ -180,51 +172,122 @@ function MindSprint({ onExit }: { onExit: () => void }) {
   )
 }
 
+// Generate similar-sounding / similar-looking name distractors
+function generateSimilarNames(correctName: string, allNames: string[]): string[] {
+  // Priority 1: use other real family names from the game
+  const otherRealNames = allNames.filter(n => n !== correctName)
+  
+  // Priority 2: generate phonetically similar names
+  const nameParts = correctName.trim().split(/\s+/)
+  const firstName = nameParts[0]
+  const lastName = nameParts[nameParts.length - 1]
+
+  // Common Indian name prefixes/suffixes for realistic distractors
+  const indianPrefixes = ["Raj", "Ram", "Rani", "Ravi", "Sita", "Gita", "Anita", "Sunita",
+    "Amit", "Anil", "Priya", "Pooja", "Vijay", "Ajay", "Sanjay", "Manoj",
+    "Deepa", "Reena", "Seema", "Meena", "Neha", "Sneha", "Rekha", "Usha",
+    "Mohan", "Sohan", "Rohan", "Kishan", "Krishan", "Suresh", "Mahesh", "Rakesh",
+    "Geeta", "Savita", "Kavita", "Sunita", "Babita", "Lalita", "Mamta", "Shanta"]
+  
+  const generated: string[] = []
+
+  // Mutate the first name slightly
+  const vowelSwap = (s: string) => s.replace(/[aeiou]/i, m => ({a:"e",e:"a",i:"ee",o:"u",u:"o"}[m.toLowerCase()]||m))
+  const addSuffix = (s: string) => s + (s.endsWith("a") ? "s" : "a")
+  const swapChar = (s: string) => {
+    if (s.length < 3) return s + "i"
+    const i = Math.floor(s.length / 2)
+    return s.slice(0, i) + (s[i] === "a" ? "e" : "a") + s.slice(i + 1)
+  }
+
+  generated.push(vowelSwap(firstName) + (lastName && lastName !== firstName ? " " + lastName : ""))
+  generated.push(addSuffix(firstName) + (lastName && lastName !== firstName ? " " + lastName : ""))
+  generated.push(swapChar(firstName) + (lastName && lastName !== firstName ? " " + lastName : ""))
+  generated.push(indianPrefixes[Math.floor(Math.random() * indianPrefixes.length)] + (lastName && lastName !== firstName ? " " + lastName : ""))
+  generated.push(firstName + " " + indianPrefixes[Math.floor(Math.random() * indianPrefixes.length)])
+
+  // Combine real other names + generated, remove duplicates and correct answer
+  const pool = [...otherRealNames, ...generated]
+    .filter(n => n.toLowerCase() !== correctName.toLowerCase())
+    .filter(n => n.trim().length > 0)
+  
+  // Deduplicate
+  const seen = new Set<string>()
+  const unique: string[] = []
+  for (const n of pool) {
+    const key = n.toLowerCase().trim()
+    if (!seen.has(key)) { seen.add(key); unique.push(n) }
+  }
+
+  // Shuffle and take 3
+  return shuffle(unique).slice(0, 3)
+}
+
 function FamilyGame({ onExit }: { onExit: () => void }) {
-  const { addPoints, completeGame, toast } = useApp()
+  const { addPoints, completeGame, toast, speak } = useApp()
   const [family, setFamily] = useState<Family[]>(() => {
-    try { return JSON.parse(localStorage.getItem("mind-sathi-family") || "[]") } catch { return [] }
+    try { return JSON.parse(localStorage.getItem("smriti-family") || "[]") } catch { return [] }
   })
   const [names, setNames] = useState<string[]>(Array(5).fill(""))
   const [active, setActive] = useState(false)
   const [index, setIndex] = useState(0)
-  const [time, setTime] = useState(7)
+  const [time, setTime] = useState(10)
   const [score, setScore] = useState(0)
   const [finished, setFinished] = useState(false)
   const [rounds, setRounds] = useState<Family[]>([])
-  const [choices, setChoices] = useState<Family[]>([])
+  // choices are now name strings (not Family objects)
+  const [nameChoices, setNameChoices] = useState<string[]>([])
+  const [answered, setAnswered] = useState(false)
+  const [lastCorrect, setLastCorrect] = useState<boolean | null>(null)
 
   useEffect(() => {
-    if (!active) return
+    if (!active || answered) return
     const id = setInterval(() => setTime(t => {
-      if (t <= 1) { next(); return 7 }
+      if (t <= 1) { handleNext(); return 10 }
       return t - 1
     }), 1000)
     return () => clearInterval(id)
-  }, [active, index])
+  }, [active, index, answered])
 
-  function makeChoices(target: Family, all: Family[]) {
-    const distractors = shuffle(all.filter(x => x.name !== target.name)).slice(0, 3)
-    return shuffle([target, ...distractors])
+  function makeNameChoices(target: Family, all: Family[]) {
+    const allNames = all.map(f => f.name)
+    const similar = generateSimilarNames(target.name, allNames)
+    // Make sure we have exactly 3 distractors
+    while (similar.length < 3) {
+      similar.push(`Person ${similar.length + 1}`)
+    }
+    return shuffle([target.name, ...similar.slice(0, 3)])
   }
 
-  function next() {
+  function handleNext() {
+    setAnswered(false)
+    setLastCorrect(null)
     if (index + 1 >= rounds.length) {
       setFinished(true); setActive(false); completeGame()
     } else {
       const nextIndex = index + 1
       setIndex(nextIndex)
-      setChoices(makeChoices(rounds[nextIndex], rounds))
-      setTime(7)
+      setNameChoices(makeNameChoices(rounds[nextIndex], rounds))
+      setTime(10)
     }
   }
 
-  function choose(person: Family) {
-    if (!active) return
-    if (person.name === rounds[index].name) {
-      setScore(s => s + 1); addPoints(2); toast("Correct! Very good.")
-    } else toast(`Good try. This is ${rounds[index].name}.`)
-    next()
+  function choose(name: string) {
+    if (!active || answered) return
+    const correct = name === rounds[index].name
+    setAnswered(true)
+    setLastCorrect(correct)
+    if (correct) {
+      setScore(s => s + 1)
+      addPoints(2)
+      speak("Bilkul sahi! Bahut badhiya.") // "Absolutely correct! Very good." in Hindi
+      toast("✓ Correct! Well done.")
+    } else {
+      speak(`Koi baat nahi. Yeh ${rounds[index].name} hai.`) // "No problem. This is [name]."
+      toast(`Good try! This is ${rounds[index].name}.`)
+    }
+    // Auto-advance after 1.5 seconds
+    setTimeout(() => handleNext(), 1500)
   }
 
   async function file(e: React.ChangeEvent<HTMLInputElement>, i: number) {
@@ -243,17 +306,19 @@ function FamilyGame({ onExit }: { onExit: () => void }) {
   function start() {
     const ready = family.filter(x => x?.photo && x?.name)
     if (ready.length < 4) {
-      toast("Please add at least 4 family members. Each question needs 1 correct photo and 3 random choices.")
+      toast("Please add at least 4 family members with names and photos.")
       return
     }
-    localStorage.setItem("mind-sathi-family", JSON.stringify(ready))
+    localStorage.setItem("smriti-family", JSON.stringify(ready))
     const shuffled = shuffle(ready)
     setRounds(shuffled)
     setIndex(0)
-    setChoices(makeChoices(shuffled[0], shuffled))
+    setNameChoices(makeNameChoices(shuffled[0], shuffled))
     setScore(0)
-    setTime(7)
+    setTime(10)
     setFinished(false)
+    setAnswered(false)
+    setLastCorrect(null)
     setActive(true)
   }
 
@@ -261,21 +326,39 @@ function FamilyGame({ onExit }: { onExit: () => void }) {
     <Panel className="mx-auto max-w-2xl text-center">
       <div className="flex items-center justify-between">
         <button onClick={()=>setActive(false)} className="font-semibold text-muted-foreground">← Exit</button>
-        <span className="font-extrabold text-primary">⏱️ {time}s</span>
+        <span className={`font-extrabold ${time <= 3 ? "text-red-500 animate-pulse" : "text-primary"}`}>⏱️ {time}s</span>
       </div>
-      <h2 className="mt-4 text-2xl font-extrabold">Who is this?</h2>
-      <p className="text-muted-foreground">Round {index+1}/{rounds.length}</p>
+      <h2 className="mt-4 text-2xl font-extrabold">Who is this? 🤔</h2>
+      <p className="text-muted-foreground">Round {index+1}/{rounds.length} · Pick the correct name</p>
       <div className="my-5 overflow-hidden rounded-3xl border bg-muted/20 p-4">
         <img src={rounds[index].photo} alt="Family member" className="mx-auto h-64 w-full object-contain rounded-2xl"/>
       </div>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        {choices.map(person => (
-          <button key={person.name} onClick={()=>choose(person)} className="rounded-2xl border-2 border-border bg-card p-2 hover:border-primary">
-            <img src={person.photo} alt={person.name} className="mx-auto h-28 w-full rounded-xl object-cover"/>
-            <span className="mt-2 block font-extrabold">{person.name}</span>
+      {/* Show 4 NAME choices as text buttons — similar names for extra challenge */}
+      <div className="grid grid-cols-2 gap-3">
+        {nameChoices.map(name => (
+          <button
+            key={name}
+            onClick={() => choose(name)}
+            disabled={answered}
+            className={`rounded-2xl border-2 px-4 py-5 font-extrabold text-lg transition-all ${
+              answered
+                ? name === rounds[index].name
+                  ? "border-green-500 bg-green-50 text-green-700"
+                  : lastCorrect === false && name !== rounds[index].name
+                  ? "border-red-300 bg-red-50 text-red-500 opacity-60"
+                  : "border-border bg-card opacity-40"
+                : "border-border bg-card hover:border-primary hover:bg-primary/5"
+            }`}
+          >
+            {name}
           </button>
         ))}
       </div>
+      {answered && (
+        <p className={`mt-4 rounded-xl py-2 px-4 font-bold ${lastCorrect ? "bg-green-50 text-green-700" : "bg-red-50 text-red-600"}`}>
+          {lastCorrect ? "✓ Correct!" : `✗ It was: ${rounds[index].name}`}
+        </p>
+      )}
     </Panel>
   )
 
@@ -283,22 +366,31 @@ function FamilyGame({ onExit }: { onExit: () => void }) {
     <Panel className="mx-auto max-w-2xl text-center">
       <Trophy className="mx-auto size-14 text-primary"/>
       <h2 className="mt-3 text-3xl font-extrabold">Great memory! 🎉</h2>
-      <p className="mt-2 text-muted-foreground">You remembered {score} of {rounds.length} family members.</p>
-      <button onClick={onExit} className="mt-6 rounded-xl bg-primary px-6 py-3 font-extrabold text-primary-foreground">Back to games</button>
+      <p className="mt-2 text-muted-foreground">You remembered {score} of {rounds.length} family members correctly.</p>
+      <div className="my-4 text-5xl font-extrabold text-primary">{score}/{rounds.length}</div>
+      <div className="flex justify-center gap-3">
+        <button onClick={start} className="inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-3 font-extrabold text-primary-foreground"><RotateCcw className="size-4"/>Play again</button>
+        <button onClick={onExit} className="rounded-xl border border-border px-5 py-3 font-bold">Back to games</button>
+      </div>
     </Panel>
   )
 
   return (
     <Panel className="mx-auto max-w-3xl">
       <div className="flex items-center justify-between">
-        <div><h2 className="text-2xl font-extrabold">👨‍👩‍👧‍👦 Family Name Challenge</h2><p className="text-muted-foreground">Add 4 or 5 family photos. Photos stay in this browser.</p></div>
+        <div><h2 className="text-2xl font-extrabold">👨‍👩‍👧‍👦 Family Name Challenge</h2><p className="text-muted-foreground">Add 4–5 family photos with names. Photos stay in this browser.</p></div>
         <button onClick={onExit} className="rounded-xl border border-border px-4 py-2 font-bold">Back</button>
       </div>
       <div className="mt-5 grid gap-3 sm:grid-cols-2">
         {Array.from({length:5},(_,i)=>(
           <div key={i} className="rounded-2xl border border-border p-4">
             <div className="mb-3 flex items-center gap-3"><Users className="size-5 text-primary"/><b>Person {i+1}</b></div>
-            <input value={names[i]} onChange={e=>{const n=[...names];n[i]=e.target.value;setNames(n);setFamily(f=>{const c=[...f];if(c[i])c[i]={...c[i],name:e.target.value};return c})}} placeholder="Name" className="mb-3 w-full rounded-xl border border-border bg-background px-3 py-2"/>
+            <input
+              value={names[i]}
+              onChange={e=>{const n=[...names];n[i]=e.target.value;setNames(n);setFamily(f=>{const c=[...f];if(c[i])c[i]={...c[i],name:e.target.value};return c})}}
+              placeholder="Full name (e.g. Ramesh Kumar)"
+              className="mb-3 w-full rounded-xl border border-border bg-background px-3 py-2"
+            />
             <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-primary/40 p-3 font-bold text-primary">
               <Upload className="size-4"/> {family[i]?.photo ? "Change photo" : "Upload photo"}
               <input type="file" accept="image/*" className="hidden" onChange={e=>file(e,i)}/>
@@ -307,8 +399,8 @@ function FamilyGame({ onExit }: { onExit: () => void }) {
           </div>
         ))}
       </div>
-      <button onClick={start} className="mt-5 w-full rounded-2xl bg-primary py-4 font-extrabold text-primary-foreground">Start 7-second challenge</button>
-      <p className="mt-2 text-center text-xs text-muted-foreground">Each question shows one correct family photo and three random matching family photos.</p>
+      <button onClick={start} className="mt-5 w-full rounded-2xl bg-primary py-4 font-extrabold text-primary-foreground">Start Family Name Challenge</button>
+      <p className="mt-2 text-center text-xs text-muted-foreground">Each question shows a photo with 4 name choices — 1 correct + 3 similar-sounding distractors.</p>
     </Panel>
   )
 }
