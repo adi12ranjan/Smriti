@@ -117,14 +117,14 @@ export function GamePlay({ type, onExit }: { type: GameType; onExit: () => void 
       addTimer(() => {
         if (round >= TOTAL_ROUNDS) {
           setPhase("complete")
-          completeGame()
+          completeGame(Math.round(((correct + (isRight ? 1 : 0)) / TOTAL_ROUNDS) * 100))
         } else {
           setRound((r) => r + 1)
           startNextRound()
         }
       }, 1050)
     },
-    [phase, current.answer, round, addPoints, toast, t, speak, addTimer, completeGame, startNextRound],
+    [phase, current.answer, round, correct, addPoints, toast, t, speak, addTimer, completeGame, startNextRound],
   )
 
   const accuracy = useMemo(

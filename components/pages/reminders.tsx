@@ -8,20 +8,22 @@ import { Panel, Tag, Pill } from "@/components/ui-bits"
 const ICONS = ["💊", "💧", "🚶", "🍽️", "👨‍⚕️", "😴", "⏰"]
 
 export function Reminders() {
-  const { t, reminders, toggleReminder, deleteReminder, addReminder, toast, speakKey } = useApp()
+  const { t, reminders, toggleReminder, deleteReminder, addReminder, toast, speakKey, confirmReminderWithPhoto } = useApp()
   const [open, setOpen] = useState(false)
   const [label, setLabel] = useState("")
   const [time, setTime] = useState("")
   const [icon, setIcon] = useState(ICONS[0])
+  const [repeat, setRepeat] = useState<"daily"|"once">("daily")
+  const [medication, setMedication] = useState(false)
 
   function submit(e: React.FormEvent) {
     e.preventDefault()
     if (!label.trim()) return
-    addReminder(label.trim(), time.trim() || "Anytime", icon)
+    addReminder(label.trim(), time.trim() || "Anytime", icon, repeat, medication)
     toast(`${t("reminderAdded")} ✓`)
     setLabel("")
     setTime("")
-    setIcon(ICONS[0])
+    setIcon(ICONS[0]); setRepeat("daily"); setMedication(false)
     setOpen(false)
   }
 
@@ -86,7 +88,7 @@ export function Reminders() {
                 </button>
               ))}
             </div>
-          </form>
+          <div className="sm:col-span-3 flex flex-wrap gap-4 text-sm font-semibold"><label className="flex items-center gap-2"><input type="checkbox" checked={medication} onChange={e=>setMedication(e.target.checked)}/> Medication reminder</label><label className="flex items-center gap-2">Repeat <select value={repeat} onChange={e=>setRepeat(e.target.value as "daily"|"once")} className="rounded-lg border p-2"><option value="daily">Every day</option><option value="once">One time</option></select></label></div></form>
         </Panel>
       )}
 
@@ -104,12 +106,7 @@ export function Reminders() {
                   <span className="mr-1 text-lg" aria-hidden>{r.icon}</span> {r.label} · {r.time}
                 </span>
                 <div className="flex gap-2">
-                  <button
-                    onClick={() => { toggleReminder(r.id); toast(`${r.label}: ${t("markedDone")} ✓`) }}
-                    className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-card px-3.5 py-2 text-sm font-bold hover:bg-muted"
-                  >
-                    <Check className="size-4" aria-hidden /> {t("done")}
-                  </button>
+                  <button onClick={() => { if (r.medication) { const input=document.createElement("input"); input.type="file"; input.accept="image/*"; input.capture="environment"; input.onchange=()=>{confirmReminderWithPhoto(r.id)}; input.click() } else { toggleReminder(r.id); toast(`${r.label}: ${t("markedDone")} ✓`) } }} className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-card px-3.5 py-2 text-sm font-bold hover:bg-muted"><Check className="size-4"/> {r.medication?"Confirm + Photo":t("done")}</button>
                   <button
                     onClick={() => { if (window.confirm(`Delete “${r.label}”?`)) { deleteReminder(r.id); toast("Reminder deleted") } }}
                     className="inline-flex items-center gap-1.5 rounded-xl border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm font-bold text-destructive hover:bg-destructive/10"

@@ -21,9 +21,15 @@ const GAMES = [
 ] as const
 
 export function Dashboard() {
-  const { t, navigate, speakKey, score, gamesCompleted, mood, cycleMood, reminders, userName } = useApp()
+  const { t, navigate, speakKey, score, gamesCompleted, mood, cycleMood, reminders, userName, activities, caregiverPhone } = useApp()
 
   const upcoming = reminders.filter((r) => !r.done).slice(0, 3)
+  const recent = activities.slice(0, 4)
+  function voiceCommand(){ const SR=(window as any).SpeechRecognition||(window as any).webkitSpeechRecognition; if(!SR){speakKey("v_welcome");return} const r=new SR(); r.lang="en-IN"; r.onresult=(e:any)=>{const x=String(e.results[0][0].transcript).toLowerCase(); if(x.includes("game"))navigate("games"); else if(x.includes("reminder"))navigate("reminders"); else if(x.includes("family")||x.includes("photo"))navigate("memory-book"); else if(x.includes("journal")||x.includes("diary"))navigate("journal"); else if(x.includes("caregiver"))navigate("caregiver"); else speakKey("v_welcome")}; r.start() }
+  const today = new Date()
+  const time = today.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+  const date = today.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" })
+
 
   return (
     <div className="space-y-5">
@@ -32,13 +38,13 @@ export function Dashboard() {
           <h1 className="text-pretty text-3xl font-extrabold tracking-tight">
             {userName ? `Hello, ${userName}` : t("greeting")} <span aria-hidden>👋</span>
           </h1>
-          <p className="mt-1 text-muted-foreground">Today · {mood.emoji} Feeling {mood.label.toLowerCase()}</p>
+          <p className="mt-1 text-muted-foreground">{date} · {time} · {mood.emoji} Feeling {mood.label.toLowerCase()}</p>
         </div>
         <div className="flex gap-2.5">
           <Pill onClick={() => speakKey("v_welcome")}>
             <Volume2 className="size-4" aria-hidden /> {t("voice")}
           </Pill>
-          <Pill onClick={() => navigate("language")}>🌐 {t("language")}</Pill>
+          <Pill onClick={voiceCommand}>🎙️ Voice command</Pill><Pill onClick={() => navigate("language")}>🌐 {t("language")}</Pill>
         </div>
       </header>
 
@@ -63,9 +69,15 @@ export function Dashboard() {
         </div>
       </section>
 
+      <section className="grid gap-3 rounded-3xl border border-primary/15 bg-primary/5 p-4 sm:grid-cols-3">
+        <div><small className="font-bold text-primary">ORIENTATION</small><div className="mt-1 text-xl font-extrabold">{date}</div><p className="text-sm text-muted-foreground">It is {today.getHours()<12?"morning":today.getHours()<17?"afternoon":"evening"}. You are doing well.</p></div>
+        <div><small className="font-bold text-primary">TODAY'S FOCUS</small><div className="mt-1 font-extrabold">One calm session at a time</div><p className="text-sm text-muted-foreground">Games adapt to your recent performance.</p></div>
+        <div className="flex items-center justify-end gap-2"><button onClick={()=>navigate("memory-book")} className="rounded-xl border bg-card px-3 py-2 text-sm font-bold">👨‍👩‍👧 Family</button><button onClick={()=>navigate("journal")} className="rounded-xl border bg-card px-3 py-2 text-sm font-bold">🎙️ Journal</button>{caregiverPhone&&<a href={`tel:${caregiverPhone}`} className="rounded-xl bg-primary px-3 py-2 text-sm font-bold text-primary-foreground">📞 Help</a>}</div>
+      </section>
+
       <section className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard label={t("stat_score")} value={`${score}`} unit="/100" trend="↑ 8% this week" icon={<Brain className="size-4" />} />
-        <StatCard label={t("stat_streak")} value="12 🔥" trend={t("streakBest")} icon={<Flame className="size-4" />} />
+        <StatCard label={t("stat_streak")} value={`${Math.min(30, Math.max(1, gamesCompleted))} 🔥`} trend={t("streakBest")} icon={<Flame className="size-4" />} />
         <StatCard label={t("stat_games")} value={`${gamesCompleted}/4`} trend={t("oneMore")} icon={<Gamepad2 className="size-4" />} />
         <button onClick={cycleMood} className="text-left">
           <StatCard label={t("stat_mood")} value={`${mood.emoji} ${mood.label}`} trend={t("tapMood")} icon={<Sparkles className="size-4" />} />
@@ -132,11 +144,7 @@ export function Dashboard() {
         </Panel>
         <Panel>
           <h3 className="mb-3 text-lg font-bold">{t("recentActivity")}</h3>
-          <ul className="space-y-3">
-            <ActivityItem title={t("g_memory_name")} sub="92% accuracy · 15 min ago" />
-            <ActivityItem title={t("stat_mood")} sub={`${mood.emoji} ${mood.label} · Today`} />
-            <ActivityItem title="Hydration reminder" sub={`${t("completed")} · Today`} />
-          </ul>
+          <ul className="space-y-3">{recent.length ? recent.map(a=><ActivityItem key={a.id} title={a.title} sub={`${a.detail} · ${new Date(a.timestamp).toLocaleTimeString([], {hour:"numeric",minute:"2-digit"})}`} />) : <ActivityItem title="Welcome to Smriti" sub="Your activity will appear here." />}</ul>
         </Panel>
       </section>
     </div>

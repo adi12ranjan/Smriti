@@ -10,6 +10,7 @@ import {
   Settings,
   Brain,
   LogOut,
+  HeartHandshake, Mic2,
 } from "lucide-react"
 import { useApp, type PageId } from "@/components/app-provider"
 import type { TKey } from "@/lib/i18n"
@@ -18,6 +19,8 @@ const NAV: { id: PageId; icon: typeof Brain; labelKey: TKey }[] = [
   { id: "dashboard", icon: CalendarHeart, labelKey: "nav_day" },
   { id: "games", icon: Gamepad2, labelKey: "nav_games" },
   { id: "memory", icon: Puzzle, labelKey: "nav_memory" },
+  { id: "memory-book", icon: HeartHandshake, labelKey: "nav_family" as TKey },
+  { id: "journal", icon: Mic2, labelKey: "nav_journal" as TKey },
   { id: "reminders", icon: AlarmClock, labelKey: "nav_reminders" },
   { id: "language", icon: Languages, labelKey: "nav_language" },
   { id: "caregiver", icon: Users, labelKey: "nav_caregiver" },
