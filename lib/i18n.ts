@@ -14,8 +14,6 @@ type Dict = {
   nav_day: string
   nav_games: string
   nav_memory: string
-  nav_family: string
-  nav_journal: string
   nav_reminders: string
   nav_language: string
   nav_caregiver: string
@@ -146,8 +144,6 @@ export const translations: Record<LangCode, Dict> = {
     nav_day: "My Day",
     nav_games: "Cognitive Games",
     nav_memory: "Memory Coach",
-    nav_family: "Family Memories",
-    nav_journal: "Voice Journal",
     nav_reminders: "Reminders",
     nav_language: "Language & Voice",
     nav_caregiver: "Caregiver View",
@@ -273,8 +269,6 @@ export const translations: Record<LangCode, Dict> = {
     nav_day: "मेरा दिन",
     nav_games: "मस्तिष्क खेल",
     nav_memory: "स्मृति कोच",
-    nav_family: "परिवार की यादें",
-    nav_journal: "वॉइस जर्नल",
     nav_reminders: "अनुस्मारक",
     nav_language: "भाषा और आवाज़",
     nav_caregiver: "देखभालकर्ता",
@@ -396,8 +390,6 @@ export const translations: Record<LangCode, Dict> = {
     nav_day: "আমার দিন",
     nav_games: "মস্তিষ্কের খেলা",
     nav_memory: "স্মৃতি কোচ",
-    nav_family: "পরিবারের স্মৃতি",
-    nav_journal: "ভয়েস জার্নাল",
     nav_reminders: "অনুস্মারক",
     nav_language: "ভাষা ও ভয়েস",
     nav_caregiver: "পরিচর্যাকারী",
@@ -519,8 +511,6 @@ export const translations: Record<LangCode, Dict> = {
     nav_day: "মোৰ দিন",
     nav_games: "মগজুৰ খেল",
     nav_memory: "স্মৃতি কোচ",
-    nav_family: "পরিবারের স্মৃতি",
-    nav_journal: "ভয়েস জার্নাল",
     nav_reminders: "মনত পেলোৱা",
     nav_language: "ভাষা আৰু কণ্ঠ",
     nav_caregiver: "যত্নকাৰী",
@@ -642,8 +632,6 @@ export const translations: Record<LangCode, Dict> = {
     nav_day: "My Day",
     nav_games: "Cognitive Games",
     nav_memory: "Memory Coach",
-    nav_family: "Family Memories",
-    nav_journal: "Voice Journal",
     nav_reminders: "Reminders",
     nav_language: "Language & Voice",
     nav_caregiver: "Caregiver View",

@@ -10,8 +10,6 @@ import { Reminders } from "@/components/pages/reminders"
 import { Language } from "@/components/pages/language"
 import { Caregiver } from "@/components/pages/caregiver"
 import { Profile } from "@/components/pages/profile"
-import { MemoryBook } from "@/components/pages/memory-book"
-import { Journal } from "@/components/pages/journal"
 import { Onboarding } from "@/components/onboarding"
 import { AuthScreen } from "@/components/auth-screen"
 
@@ -25,10 +23,6 @@ function CurrentPage() {
       return <MemoryCoach />
     case "reminders":
       return <Reminders />
-    case "memory-book":
-      return <MemoryBook />
-    case "journal":
-      return <Journal />
     case "language":
       return <Language />
     case "caregiver":

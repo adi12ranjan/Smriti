@@ -1,6 +1,86 @@
 "use client"
-import { useState } from "react"
-import { Panel,Tag,Pill } from "@/components/ui-bits"
+
 import { useApp } from "@/components/app-provider"
-export function Caregiver(){const {score,reminders,activities,mood,caregiverName,caregiverPhone,setCaregiver,generateCaregiverCode,caregiverCode}=useApp();const [n,setN]=useState(caregiverName);const [p,setP]=useState(caregiverPhone);const games=activities.filter(a=>a.type==="game");const accuracy=games.length?Math.round(games.reduce((x,a)=>x+(a.value??0),0)/games.length):0;const completed=reminders.filter(r=>r.done).length;const rate=reminders.length?Math.round(completed/reminders.length*100):0;return <div className="space-y-5"><header><h1 className="text-3xl font-extrabold">Caregiver Dashboard 👨‍👩‍👧</h1><p className="mt-1 text-muted-foreground">Real activity from this device — designed for calm, privacy-first support.</p></header><section className="grid grid-cols-2 gap-3 lg:grid-cols-4"><Stat label="Cognitive score" value={`${score}/100`}/><Stat label="Game accuracy" value={`${accuracy}%`}/><Stat label="Reminder completion" value={`${rate}%`}/><Stat label="Activities" value={`${activities.length}`}/></section><div className="grid gap-4 lg:grid-cols-2"><Panel><h2 className="text-lg font-bold">Caregiver connection</h2><p className="mt-1 text-sm text-muted-foreground">Save a trusted contact for the patient's one-tap help button.</p><div className="mt-4 grid gap-3"><input value={n} onChange={e=>setN(e.target.value)} placeholder="Caregiver name" className="rounded-xl border p-3"/><input value={p} onChange={e=>setP(e.target.value)} placeholder="Phone number" className="rounded-xl border p-3"/><Pill onClick={()=>setCaregiver(n,p)}>Save caregiver</Pill><div className="rounded-xl bg-muted p-3"><b>Link code: </b>{caregiverCode||"Generate a code"}<button onClick={generateCaregiverCode} className="ml-3 font-bold text-primary">Generate</button></div></div></Panel><Panel><h2 className="text-lg font-bold">Care alerts</h2><div className="mt-3 space-y-3">{reminders.filter(r=>!r.done).slice(0,4).map(r=><div key={r.id} className="flex justify-between rounded-xl bg-muted/50 p-3"><span>{r.icon} {r.label}</span><Tag tone="amber">Pending</Tag></div>)}{reminders.every(r=>r.done)&&<Tag tone="green">All reminders completed</Tag>}</div><div className="mt-5 rounded-2xl border p-4"><b>Latest mood</b><div className="mt-2 text-3xl">{mood.emoji}</div><p className="text-sm text-muted-foreground">{mood.label}</p></div></Panel></div><Panel><h2 className="text-lg font-bold">Live activity feed</h2><div className="mt-3 divide-y">{activities.slice(0,10).map(a=><div key={a.id} className="py-3"><b>{a.title}</b><p className="text-sm text-muted-foreground">{a.detail} · {new Date(a.timestamp).toLocaleString()}</p></div>)}{!activities.length&&<p className="text-sm text-muted-foreground">No activity yet.</p>}</div></Panel></div>}
-function Stat({label,value}:{label:string;value:string}){return <div className="rounded-2xl border bg-card p-4"><small className="font-bold uppercase tracking-wide text-muted-foreground">{label}</small><strong className="mt-2 block text-2xl">{value}</strong></div>}
+import { Panel, Tag } from "@/components/ui-bits"
+
+export function Caregiver() {
+  const { t, score, reminders } = useApp()
+  const missed = reminders.filter((r) => !r.done && r.icon === "💧").length > 0
+
+  const bars = [
+    { label: t("memory"), value: 86 },
+    { label: t("attention"), value: 74 },
+    { label: t("patternRec"), value: 81 },
+  ]
+
+  return (
+    <div className="space-y-5">
+      <header className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-extrabold tracking-tight">
+            {t("caregiverTitle")} <span aria-hidden>👨‍👩‍👧</span>
+          </h1>
+          <p className="mt-1 text-muted-foreground">{t("caregiverSubtitle")}</p>
+        </div>
+        <Tag tone="green">{t("synced")}</Tag>
+      </header>
+
+      <section className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <Stat label={t("score7")} value={`${score}`} trend="↑ 8%" />
+        <Stat label={t("memAccuracy")} value="86%" trend="↑ 5%" />
+        <Stat label={t("engagement")} value="4.2" trend={t("perWeek")} />
+        <Stat label={t("alerts")} value={missed ? "1" : "0"} trend={missed ? t("needsReview") : t("healthy")} warn={missed} />
+      </section>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Panel>
+          <h3 className="text-lg font-bold">{t("weeklyInsight")}</h3>
+          <p className="mt-2 text-sm text-muted-foreground">{t("weeklyInsightText")}</p>
+          <div className="mt-5 space-y-4">
+            {bars.map((b) => (
+              <div key={b.label}>
+                <div className="mb-1.5 flex justify-between text-sm font-semibold">
+                  <span>{b.label}</span>
+                  <span className="text-muted-foreground">{b.value}%</span>
+                </div>
+                <div className="h-2.5 overflow-hidden rounded-full bg-muted">
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-primary to-[oklch(0.7_0.15_230)]"
+                    style={{ width: `${b.value}%` }}
+                    aria-hidden
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        </Panel>
+
+        <Panel>
+          <h3 className="text-lg font-bold">{t("careAlerts")}</h3>
+          <ul className="mt-3">
+            {missed && (
+              <li className="flex items-center justify-between border-b border-border py-3.5">
+                <span className="text-sm">⚠️ {t("missedHydration")}</span>
+                <Tag tone="amber">{t("review")}</Tag>
+              </li>
+            )}
+            <li className="flex items-center justify-between py-3.5">
+              <span className="text-sm">💚 {t("noUrgent")}</span>
+              <Tag tone="green">{t("healthy")}</Tag>
+            </li>
+          </ul>
+        </Panel>
+      </div>
+    </div>
+  )
+}
+
+function Stat({ label, value, trend, warn }: { label: string; value: string; trend: string; warn?: boolean }) {
+  return (
+    <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+      <small className="text-xs font-bold uppercase tracking-wide text-muted-foreground">{label}</small>
+      <strong className="mt-2 block text-2xl">{value}</strong>
+      <span className={`text-xs font-bold ${warn ? "text-[oklch(0.6_0.15_60)]" : "text-accent"}`}>{trend}</span>
+    </div>
+  )
+}

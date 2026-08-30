@@ -1,68 +1,481 @@
 "use client"
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
+
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react"
 import { LANGUAGES, translations, type LangCode, type TKey } from "@/lib/i18n"
 
-export type Reminder = { id:string; icon:string; label:string; time:string; done:boolean; repeat?:"daily"|"once"; lastCompleted?:string; medication?:boolean }
-export type PageId = "dashboard"|"games"|"memory"|"reminders"|"memory-book"|"journal"|"language"|"caregiver"|"profile"
-export type Mood = { emoji:string; label:string }
-export type FamilyMember = { id:string; name:string; relationship:string; image:string; note?:string }
-export type Activity = { id:string; type:string; title:string; detail:string; timestamp:number; value?:number }
-export type Journal = { id:string; text:string; transcript?:string; createdAt:number; audioUrl?:string }
-export type ProfileData = { name:string; age:string; lang:LangCode; mood:Mood; textScale:number; selectedVoiceName?:string; contrast?:boolean; emergencyMode?:boolean; caregiverName?:string; caregiverPhone?:string; familyMembers:FamilyMember[]; activities:Activity[]; journals:Journal[]; badges:string[]; linkedCode?:string }
+export type Reminder = {
+  id: string
+  icon: string
+  label: string
+  time: string
+  done: boolean
+}
 
-const MOODS: Mood[] = [{emoji:"😀",label:"Great"},{emoji:"😊",label:"Good"},{emoji:"😐",label:"Okay"},{emoji:"😔",label:"Low"}]
-const INITIAL_REMINDERS: Reminder[] = [
- {id:"r1",icon:"💊",label:"Blood pressure medicine",time:"6:00 PM",done:false,repeat:"daily",medication:true},
- {id:"r2",icon:"💧",label:"Drink water",time:"6:30 PM",done:false,repeat:"daily"},
- {id:"r3",icon:"🚶",label:"Evening walk",time:"7:00 PM",done:false,repeat:"daily"},
- {id:"r4",icon:"👨‍⚕️",label:"Doctor appointment",time:"10:30 AM",done:false,repeat:"once"},
+export type PageId =
+  | "dashboard"
+  | "games"
+  | "memory"
+  | "reminders"
+  | "language"
+  | "caregiver"
+  | "profile"
+
+export type Mood = { emoji: string; label: string }
+
+const MOODS: Mood[] = [
+  { emoji: "😀", label: "Great" },
+  { emoji: "😊", label: "Good" },
+  { emoji: "😐", label: "Okay" },
+  { emoji: "😔", label: "Low" },
 ]
-const AUTH_KEY="smriti-users", SESSION_KEY="smriti-session", LEGACY_KEY="smriti-profile"
-type AuthUser={username:string;passwordHash:string;displayName:string}
-function simpleHash(str:string){let h=0;for(let i=0;i<str.length;i++){h=((h<<5)-h)+str.charCodeAt(i);h|=0}return h.toString(36)}
-function profileKey(username:string){return `smriti-profile:${username.toLowerCase()}`}
-function emptyProfile():ProfileData{return {name:"",age:"",lang:"en",mood:MOODS[1],textScale:1,contrast:false,emergencyMode:false,familyMembers:[],activities:[],journals:[],badges:[]}}
-function dateKey(d=new Date()){return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`}
-function normalizeProfile(p:any):ProfileData{return {...emptyProfile(),...p,familyMembers:p?.familyMembers??[],activities:p?.activities??[],journals:p?.journals??[],badges:p?.badges??[]}}
 
-export type AppContextType={lang:LangCode;setLang:(c:LangCode)=>void;t:(k:TKey)=>string;languages:typeof LANGUAGES;page:PageId;navigate:(p:PageId)=>void;speak:(s:string)=>void;speakKey:(k:TKey)=>void;textScale:number;setTextScale:(v:number)=>void;userName:string;userAge:string;onboardingDone:boolean;saveProfile:(n:string,a:string,l:LangCode,m:Mood)=>void;reminders:Reminder[];toggleReminder:(id:string)=>void;deleteReminder:(id:string)=>void;addReminder:(l:string,t:string,i:string,repeat?:"daily"|"once",medication?:boolean)=>void;mood:Mood;cycleMood:()=>void;moods:Mood[];setMood:(m:Mood)=>void;toast:(m:string)=>void;toastMsg:string|null;score:number;addPoints:(n:number)=>void;gamesCompleted:number;completeGame:(accuracy?:number)=>void;activities:Activity[];familyMembers:FamilyMember[];addFamilyMember:(m:Omit<FamilyMember,"id">)=>void;removeFamilyMember:(id:string)=>void;journals:Journal[];addJournal:(j:Omit<Journal,"id"|"createdAt">)=>void;badges:string[];contrast:boolean;setContrast:(v:boolean)=>void;emergencyMode:boolean;setEmergencyMode:(v:boolean)=>void;caregiverName:string;caregiverPhone:string;setCaregiver:(n:string,p:string)=>void;caregiverCode:string;generateCaregiverCode:()=>string;confirmReminderWithPhoto:(id:string)=>void;isLoggedIn:boolean;login:(u:string,p:string)=>boolean;signup:(u:string,p:string,d:string)=>boolean;logout:()=>void;authError:string|null;setAuthError:(e:string|null)=>void;selectedVoiceName:string|null;setSelectedVoiceName:(n:string|null)=>void;availableVoices:SpeechSynthesisVoice[]}
-const AppContext=createContext<AppContextType|null>(null)
-export function useApp(){const c=useContext(AppContext);if(!c)throw new Error("useApp must be used within AppProvider");return c}
+const INITIAL_REMINDERS: Reminder[] = [
+  { id: "r1", icon: "💊", label: "Blood pressure medicine", time: "6:00 PM", done: false },
+  { id: "r2", icon: "💧", label: "Drink water", time: "6:30 PM", done: false },
+  { id: "r3", icon: "🚶", label: "Evening walk", time: "7:00 PM", done: false },
+  { id: "r4", icon: "👨‍⚕️", label: "Doctor appointment", time: "Sun, 10:30 AM", done: false },
+]
 
-export function AppProvider({children}:{children:ReactNode}){
- const [lang,setLangState]=useState<LangCode>("en"),[page,setPage]=useState<PageId>("dashboard"),[reminders,setReminders]=useState(INITIAL_REMINDERS),[mood,setMoodState]=useState(MOODS[1]),[toastMsg,setToastMsg]=useState<string|null>(null),[score,setScore]=useState(78),[gamesCompleted,setGamesCompleted]=useState(3),[textScale,setTextScaleState]=useState(1),[userName,setUserName]=useState(""),[userAge,setUserAge]=useState(""),[onboardingDone,setOnboardingDone]=useState(false),[activities,setActivities]=useState<Activity[]>([]),[familyMembers,setFamilyMembers]=useState<FamilyMember[]>([]),[journals,setJournals]=useState<Journal[]>([]),[badges,setBadges]=useState<string[]>([]),[contrast,setContrastState]=useState(false),[emergencyMode,setEmergencyModeState]=useState(false),[caregiverName,setCaregiverName]=useState(""),[caregiverPhone,setCaregiverPhone]=useState(""),[caregiverCode,setCaregiverCode]=useState(""),[activeReminder,setActiveReminder]=useState<Reminder|null>(null),[isLoggedIn,setIsLoggedIn]=useState(false),[authError,setAuthError]=useState<string|null>(null),[selectedVoiceName,setSelectedVoiceNameState]=useState<string|null>(null),[availableVoices,setAvailableVoices]=useState<SpeechSynthesisVoice[]>([])
- const currentUser=useRef(""), fired=useRef<Record<string,string>>({}), toastTimer=useRef<ReturnType<typeof setTimeout>|null>(null)
- const persist=useCallback((patch:any)=>{if(!currentUser.current)return;try{const raw=localStorage.getItem(profileKey(currentUser.current));const p=normalizeProfile(raw?JSON.parse(raw):{});localStorage.setItem(profileKey(currentUser.current),JSON.stringify({...p,...patch}))}catch{}},[])
- const loadProfile=useCallback((username:string)=>{currentUser.current=username;try{const raw=localStorage.getItem(profileKey(username));const p=normalizeProfile(raw?JSON.parse(raw):{});setUserName(p.name);setUserAge(p.age);setLangState(p.lang);setMoodState(p.mood);setTextScaleState(p.textScale||1);setSelectedVoiceNameState(p.selectedVoiceName??null);setContrastState(!!p.contrast);setEmergencyModeState(!!p.emergencyMode);setCaregiverName(p.caregiverName??"");setCaregiverPhone(p.caregiverPhone??"");setFamilyMembers(p.familyMembers);setActivities(p.activities);setJournals(p.journals);setBadges(p.badges);setOnboardingDone(!!p.name);const rs=localStorage.getItem(`${profileKey(username)}:reminders`);setReminders(rs?JSON.parse(rs):INITIAL_REMINDERS);const stats=localStorage.getItem(`${profileKey(username)}:stats`);if(stats){const s=JSON.parse(stats);setScore(s.score??78);setGamesCompleted(s.gamesCompleted??3)}}catch{}} ,[])
- useEffect(()=>{try{const s=JSON.parse(localStorage.getItem(SESSION_KEY)||"null");if(s?.loggedIn&&s.username){setIsLoggedIn(true);loadProfile(s.username)}}catch{}},[loadProfile])
- useEffect(()=>{if(!currentUser.current)return;try{localStorage.setItem(`${profileKey(currentUser.current)}:reminders`,JSON.stringify(reminders));localStorage.setItem(`${profileKey(currentUser.current)}:stats`,JSON.stringify({score,gamesCompleted}))}catch{}},[reminders,score,gamesCompleted])
- useEffect(()=>{if(typeof window==="undefined"||!("speechSynthesis"in window))return;const load=()=>setAvailableVoices(window.speechSynthesis.getVoices());load();window.speechSynthesis.onvoiceschanged=load;return()=>{window.speechSynthesis.onvoiceschanged=null}},[])
- const toast=useCallback((m:string)=>{setToastMsg(m);if(toastTimer.current)clearTimeout(toastTimer.current);toastTimer.current=setTimeout(()=>setToastMsg(null),2600)},[])
- const speak=useCallback((text:string)=>{if(typeof window!=="undefined"&&"speechSynthesis"in window){window.speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(text);const sl=LANGUAGES.find(l=>l.code===lang)?.speechLang??"hi-IN";u.lang=sl;u.rate=.82;u.volume=1;const vs=window.speechSynthesis.getVoices();u.voice=(selectedVoiceName&&vs.find(v=>v.name===selectedVoiceName))||vs.find(v=>v.lang.toLowerCase()===sl.toLowerCase())||vs.find(v=>v.lang.toLowerCase().startsWith(sl.split("-")[0]))||vs.find(v=>v.lang.toLowerCase().includes("in"))||vs[0];window.speechSynthesis.speak(u)}else toast(text)},[lang,selectedVoiceName,toast])
- const speakKey=useCallback((k:TKey)=>speak(translations[lang][k]),[lang,speak])
- const login=useCallback((u:string,p:string)=>{try{const users:AuthUser[]=JSON.parse(localStorage.getItem(AUTH_KEY)||"[]");const user=users.find(x=>x.username.toLowerCase()===u.toLowerCase());if(!user){setAuthError("User not found. Please sign up first.");return false}if(user.passwordHash!==simpleHash(p)){setAuthError("Incorrect password.");return false}setIsLoggedIn(true);setAuthError(null);localStorage.setItem(SESSION_KEY,JSON.stringify({loggedIn:true,username:user.username}));loadProfile(user.username);return true}catch{setAuthError("Something went wrong. Try again.");return false}},[loadProfile])
- const signup=useCallback((u:string,p:string,d:string)=>{if(!u.trim()||!p.trim()||!d.trim()){setAuthError("All fields are required.");return false}if(p.length<4){setAuthError("Password must be at least 4 characters.");return false}try{const users:AuthUser[]=JSON.parse(localStorage.getItem(AUTH_KEY)||"[]");if(users.some(x=>x.username.toLowerCase()===u.toLowerCase())){setAuthError("Username already taken. Try another.");return false}users.push({username:u,passwordHash:simpleHash(p),displayName:d});localStorage.setItem(AUTH_KEY,JSON.stringify(users));localStorage.setItem(SESSION_KEY,JSON.stringify({loggedIn:true,username:u}));setIsLoggedIn(true);setAuthError(null);loadProfile(u);setUserName(d);return true}catch{setAuthError("Something went wrong. Try again.");return false}},[loadProfile])
- const logout=useCallback(()=>{setIsLoggedIn(false);setOnboardingDone(false);setUserName("");setUserAge("");currentUser.current="";localStorage.removeItem(SESSION_KEY);if("speechSynthesis"in window)window.speechSynthesis.cancel()},[])
- const saveProfile=useCallback((n:string,a:string,l:LangCode,m:Mood)=>{setUserName(n.trim());setUserAge(a);setLangState(l);setMoodState(m);setOnboardingDone(true);persist({name:n.trim(),age:a,lang:l,mood:m,textScale});setActivities(prev=>{const next=[{id:`a${Date.now()}`,type:"mood",title:"Mood check-in",detail:`${m.emoji} ${m.label}`,timestamp:Date.now()},...prev];persist({activities:next});return next})},[persist,textScale])
- const setTextScale=useCallback((v:number)=>{const n=Math.max(1,Math.min(1.8,v));setTextScaleState(n);persist({textScale:n})},[persist])
- const setLang=useCallback((c:LangCode)=>{setLangState(c);persist({lang:c});toast(`${translations[c].languageChanged} ${translations[c].langName}`);speak(translations[c].v_welcome)},[persist,speak,toast])
- const navigate=useCallback((p:PageId)=>{setPage(p);window.scrollTo(0,0)},[])
- const updateActivities=useCallback((a:Activity[])=>{setActivities(a);persist({activities:a})},[persist])
- const toggleReminder=useCallback((id:string)=>setReminders(p=>p.map(r=>r.id===id?{...r,done:!r.done,lastCompleted:!r.done?dateKey():r.lastCompleted}:r)),[])
- const deleteReminder=useCallback((id:string)=>setReminders(p=>p.filter(r=>r.id!==id)),[])
- const addReminder=useCallback((label:string,time:string,icon:string,repeat:"daily"|"once"="daily",medication=false)=>setReminders(p=>[...p,{id:`r${Date.now()}`,icon:icon||"⏰",label,time,done:false,repeat,medication}]),[])
- const cycleMood=useCallback(()=>setMoodState(p=>{const m=MOODS[(MOODS.findIndex(x=>x.label===p.label)+1)%MOODS.length];persist({mood:m});updateActivities([{id:`a${Date.now()}`,type:"mood",title:"Mood check-in",detail:`${m.emoji} ${m.label}`,timestamp:Date.now()},...activities].slice(0,50));return m}),[activities,persist,updateActivities])
- const setMood=useCallback((m:Mood)=>{setMoodState(m);persist({mood:m})},[persist])
- const addPoints=useCallback((n:number)=>setScore(s=>Math.min(100,s+n)),[])
- const completeGame=useCallback((accuracy=0)=>{setGamesCompleted(g=>g+1);setScore(s=>Math.min(100,s+Math.max(1,Math.round(accuracy/20))));const a={id:`a${Date.now()}`,type:"game",title:"Cognitive game completed",detail:`${accuracy}% accuracy`,timestamp:Date.now(),value:accuracy};updateActivities([a,...activities].slice(0,50));setBadges(b=>{const next=[...b];if(accuracy>=80&&!next.includes("Sharp Mind"))next.push("Sharp Mind");if(gamesCompleted+1>=10&&!next.includes("10 Sessions"))next.push("10 Sessions");persist({badges:next});return next})},[activities,gamesCompleted,persist,updateActivities])
- const addFamilyMember=useCallback((m:Omit<FamilyMember,"id">)=>setFamilyMembers(p=>{const n=[...p,{...m,id:`f${Date.now()}`}];persist({familyMembers:n});return n}),[persist])
- const removeFamilyMember=useCallback((id:string)=>setFamilyMembers(p=>{const n=p.filter(x=>x.id!==id);persist({familyMembers:n});return n}),[persist])
- const addJournal=useCallback((j:Omit<Journal,"id"|"createdAt">)=>setJournals(p=>{const n=[{...j,id:`j${Date.now()}`,createdAt:Date.now()},...p];persist({journals:n});return n}),[persist])
- const setContrast=useCallback((v:boolean)=>{setContrastState(v);persist({contrast:v})},[persist]);const setEmergencyMode=useCallback((v:boolean)=>{setEmergencyModeState(v);persist({emergencyMode:v})},[persist]);const setCaregiver=useCallback((n:string,p:string)=>{setCaregiverName(n);setCaregiverPhone(p);persist({caregiverName:n,caregiverPhone:p})},[persist])
- const generateCaregiverCode=useCallback(()=>{const c=Math.random().toString(36).slice(2,8).toUpperCase();setCaregiverCode(c);persist({linkedCode:c});return c},[persist])
- const confirmReminderWithPhoto=useCallback((id:string)=>{setReminders(p=>p.map(r=>r.id===id?{...r,done:true,lastCompleted:dateKey()}:r));toast("Confirmation saved for caregiver");},[toast])
- useEffect(()=>{if(!onboardingDone)return;const check=()=>{const now=new Date();if(now.getHours()===0&&now.getMinutes()===0){setReminders(p=>p.map(r=>r.repeat==="daily"?{...r,done:false}:r))}const minutes=now.getHours()*60+now.getMinutes();for(const r of reminders){if(r.done)continue;const m=r.time.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/i);if(!m)continue;let h=+m[1],mi=+m[2];if(m[3]?.toUpperCase()==="PM"&&h<12)h+=12;if(m[3]?.toUpperCase()==="AM"&&h===12)h=0;if(h*60+mi===minutes){const k=`${dateKey()}-${r.id}`;if(!fired.current[k]){fired.current[k]=k;setActiveReminder(r)}}}};check();const id=window.setInterval(check,15000);return()=>window.clearInterval(id)},[onboardingDone,reminders])
- useEffect(()=>{if(activeReminder){const id=setTimeout(()=>speak(`Reminder: ${activeReminder.label}. It is time now.`),400);return()=>clearTimeout(id)}},[activeReminder,speak])
- const value=useMemo<AppContextType>(()=>({lang,setLang,t:(k)=>translations[lang][k],languages:LANGUAGES,page,navigate,speak,speakKey,textScale,setTextScale,userName,userAge,onboardingDone,saveProfile,reminders,toggleReminder,deleteReminder,addReminder,mood,cycleMood,moods:MOODS,setMood,toast,toastMsg,score,addPoints,gamesCompleted,completeGame,activities,familyMembers,addFamilyMember,removeFamilyMember,journals,addJournal,badges,contrast,setContrast,emergencyMode,setEmergencyMode,caregiverName,caregiverPhone,setCaregiver,caregiverCode,generateCaregiverCode,confirmReminderWithPhoto,isLoggedIn,login,signup,logout,authError,setAuthError,selectedVoiceName,setSelectedVoiceName:(n)=>{setSelectedVoiceNameState(n);persist({selectedVoiceName:n})},availableVoices}),[lang,setLang,navigate,speak,speakKey,textScale,setTextScale,userName,userAge,onboardingDone,saveProfile,reminders,toggleReminder,deleteReminder,addReminder,mood,cycleMood,setMood,toast,toastMsg,score,addPoints,gamesCompleted,completeGame,activities,familyMembers,addFamilyMember,removeFamilyMember,journals,addJournal,badges,contrast,setContrast,emergencyMode,setEmergencyMode,caregiverName,caregiverPhone,setCaregiver,caregiverCode,generateCaregiverCode,confirmReminderWithPhoto,isLoggedIn,login,signup,logout,authError,selectedVoiceName,availableVoices,persist])
- return <AppContext.Provider value={value}><div className={`${contrast?"contrast-mode":""} ${emergencyMode?"emergency-mode":""}`} style={{fontSize:`${textScale}em`}}>{children}</div>{activeReminder&&<div className="fixed inset-0 z-[100] grid place-items-center bg-black/50 p-4"><div className="w-full max-w-md rounded-3xl border bg-card p-7 text-center shadow-2xl"><div className="mx-auto grid size-20 place-items-center rounded-full bg-primary/10 text-4xl">{activeReminder.icon}</div><p className="mt-4 font-bold text-primary">⏰ Reminder</p><h2 className="mt-2 text-2xl font-extrabold">{activeReminder.label}</h2><p className="mt-2 text-muted-foreground">It is time now. Please don't forget.</p><button onClick={()=>speak(`${activeReminder.label}. It is time now.`)} className="mt-5 w-full rounded-2xl border p-3 font-bold">🔊 Read Again</button><button onClick={()=>{toggleReminder(activeReminder.id);setActiveReminder(null)}} className="mt-2 w-full rounded-2xl bg-primary p-4 font-extrabold text-primary-foreground">✓ Mark as Done</button><button onClick={()=>setActiveReminder(null)} className="mt-2 w-full rounded-2xl border p-3 font-bold">Dismiss</button></div></div>}</AppContext.Provider>
+const STORAGE_KEY = "smriti-profile"
+const AUTH_KEY = "smriti-users"
+const SESSION_KEY = "smriti-session"
+
+type AuthUser = { username: string; passwordHash: string; displayName: string }
+
+// Simple hash for password storage (not cryptographic — client-side only demo)
+function simpleHash(str: string): string {
+  let hash = 0
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) - hash) + str.charCodeAt(i)
+    hash |= 0
+  }
+  return hash.toString(36)
+}
+
+type AppContextType = {
+  lang: LangCode
+  setLang: (code: LangCode) => void
+  t: (key: TKey) => string
+  languages: typeof LANGUAGES
+  page: PageId
+  navigate: (page: PageId) => void
+  speak: (text: string) => void
+  speakKey: (key: TKey) => void
+  textScale: number
+  setTextScale: (v: number) => void
+  userName: string
+  userAge: string
+  onboardingDone: boolean
+  saveProfile: (name: string, age: string, language: LangCode, mood: Mood) => void
+  reminders: Reminder[]
+  toggleReminder: (id: string) => void
+  deleteReminder: (id: string) => void
+  addReminder: (label: string, time: string, icon: string) => void
+  mood: Mood
+  cycleMood: () => void
+  moods: Mood[]
+  setMood: (m: Mood) => void
+  toast: (msg: string) => void
+  toastMsg: string | null
+  score: number
+  addPoints: (n: number) => void
+  gamesCompleted: number
+  completeGame: () => void
+  // auth
+  isLoggedIn: boolean
+  login: (username: string, password: string) => boolean
+  signup: (username: string, password: string, displayName: string) => boolean
+  logout: () => void
+  authError: string | null
+  setAuthError: (e: string | null) => void
+  // voice selection
+  selectedVoiceName: string | null
+  setSelectedVoiceName: (name: string | null) => void
+  availableVoices: SpeechSynthesisVoice[]
+}
+
+const AppContext = createContext<AppContextType | null>(null)
+
+export function useApp() {
+  const ctx = useContext(AppContext)
+  if (!ctx) throw new Error("useApp must be used within AppProvider")
+  return ctx
+}
+
+export function AppProvider({ children }: { children: ReactNode }) {
+  const [lang, setLangState] = useState<LangCode>("en")
+  const [page, setPage] = useState<PageId>("dashboard")
+  const [reminders, setReminders] = useState<Reminder[]>(INITIAL_REMINDERS)
+  const [mood, setMoodState] = useState<Mood>(MOODS[1])
+  const [toastMsg, setToastMsg] = useState<string | null>(null)
+  const [score, setScore] = useState(78)
+  const [gamesCompleted, setGamesCompleted] = useState(3)
+  const [textScale, setTextScaleState] = useState(1)
+  const [userName, setUserName] = useState("")
+  const [userAge, setUserAge] = useState("")
+  const [onboardingDone, setOnboardingDone] = useState(false)
+  const [activeReminder, setActiveReminder] = useState<Reminder | null>(null)
+  const firedReminders = useRef<Record<string, string>>({})
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Auth state
+  const [isLoggedIn, setIsLoggedIn] = useState(false)
+  const [authError, setAuthError] = useState<string | null>(null)
+
+  // Voice selection state
+  const [selectedVoiceName, setSelectedVoiceNameState] = useState<string | null>(null)
+  const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([])
+  const voicesLoaded = useRef(false)
+
+  // Load voices
+  useEffect(() => {
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) return
+    const load = () => {
+      const voices = window.speechSynthesis.getVoices()
+      if (voices.length > 0 && !voicesLoaded.current) {
+        voicesLoaded.current = true
+        setAvailableVoices(voices)
+        // Auto-select a good Indian English voice if none selected
+        setSelectedVoiceNameState(prev => {
+          if (prev) return prev
+          // Priority: Google हिन्दी, Google India English, Microsoft Heera, any en-IN
+          const preferred =
+            voices.find(v => v.name.includes("Google हिन्दी")) ??
+            voices.find(v => v.name.toLowerCase().includes("google") && v.lang === "hi-IN") ??
+            voices.find(v => v.name.toLowerCase().includes("heera")) ??
+            voices.find(v => v.name.toLowerCase().includes("ravi")) ??
+            voices.find(v => v.lang === "hi-IN") ??
+            voices.find(v => v.lang === "en-IN") ??
+            voices.find(v => v.lang.startsWith("en-IN")) ??
+            voices.find(v => v.lang.startsWith("en")) ??
+            null
+          return preferred?.name ?? null
+        })
+      }
+    }
+    load()
+    window.speechSynthesis.onvoiceschanged = load
+    return () => { window.speechSynthesis.onvoiceschanged = null }
+  }, [])
+
+  const setSelectedVoiceName = useCallback((name: string | null) => {
+    setSelectedVoiceNameState(name)
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY)
+      const p = raw ? JSON.parse(raw) : {}
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...p, selectedVoiceName: name }))
+    } catch {}
+  }, [])
+
+  // Check session on mount
+  useEffect(() => {
+    try {
+      const session = localStorage.getItem(SESSION_KEY)
+      if (session) {
+        const s = JSON.parse(session)
+        if (s.loggedIn && s.username) {
+          setIsLoggedIn(true)
+        }
+      }
+    } catch {}
+  }, [])
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY)
+      if (raw) {
+        const p = JSON.parse(raw)
+        if (p.name) setUserName(p.name)
+        if (p.age) setUserAge(p.age)
+        if (p.lang) setLangState(p.lang)
+        if (p.mood) setMoodState(p.mood)
+        if (p.textScale) setTextScaleState(Number(p.textScale))
+        if (p.name) setOnboardingDone(true)
+        if (p.selectedVoiceName !== undefined) setSelectedVoiceNameState(p.selectedVoiceName)
+      }
+    } catch {}
+  }, [])
+
+  const login = useCallback((username: string, password: string): boolean => {
+    try {
+      const usersRaw = localStorage.getItem(AUTH_KEY)
+      const users: AuthUser[] = usersRaw ? JSON.parse(usersRaw) : []
+      const user = users.find(u => u.username.toLowerCase() === username.toLowerCase())
+      if (!user) { setAuthError("User not found. Please sign up first."); return false }
+      if (user.passwordHash !== simpleHash(password)) { setAuthError("Incorrect password."); return false }
+      setIsLoggedIn(true)
+      setAuthError(null)
+      localStorage.setItem(SESSION_KEY, JSON.stringify({ loggedIn: true, username: user.username }))
+      return true
+    } catch { setAuthError("Something went wrong. Try again."); return false }
+  }, [])
+
+  const signup = useCallback((username: string, password: string, displayName: string): boolean => {
+    if (!username.trim() || !password.trim() || !displayName.trim()) {
+      setAuthError("All fields are required."); return false
+    }
+    if (password.length < 4) { setAuthError("Password must be at least 4 characters."); return false }
+    try {
+      const usersRaw = localStorage.getItem(AUTH_KEY)
+      const users: AuthUser[] = usersRaw ? JSON.parse(usersRaw) : []
+      if (users.find(u => u.username.toLowerCase() === username.toLowerCase())) {
+        setAuthError("Username already taken. Try another."); return false
+      }
+      users.push({ username, passwordHash: simpleHash(password), displayName })
+      localStorage.setItem(AUTH_KEY, JSON.stringify(users))
+      setIsLoggedIn(true)
+      setAuthError(null)
+      localStorage.setItem(SESSION_KEY, JSON.stringify({ loggedIn: true, username }))
+      return true
+    } catch { setAuthError("Something went wrong. Try again."); return false }
+  }, [])
+
+  const logout = useCallback(() => {
+    setIsLoggedIn(false)
+    setOnboardingDone(false)
+    setUserName("")
+    localStorage.removeItem(SESSION_KEY)
+    localStorage.removeItem(STORAGE_KEY)
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      window.speechSynthesis.cancel()
+    }
+  }, [])
+
+  const setTextScale = useCallback((v: number) => {
+    const next = Math.max(1, Math.min(1.8, v))
+    setTextScaleState(next)
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY)
+      const p = raw ? JSON.parse(raw) : {}
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...p, textScale: next }))
+    } catch {}
+  }, [])
+
+  const saveProfile = useCallback((name: string, age: string, language: LangCode, selectedMood: Mood) => {
+    setUserName(name.trim())
+    setUserAge(age)
+    setLangState(language)
+    setMoodState(selectedMood)
+    setOnboardingDone(true)
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ name: name.trim(), age, lang: language, mood: selectedMood, textScale }))
+  }, [textScale])
+
+  const t = useCallback((key: TKey) => translations[lang][key], [lang])
+
+  const toast = useCallback((msg: string) => {
+    setToastMsg(msg)
+    if (toastTimer.current) clearTimeout(toastTimer.current)
+    toastTimer.current = setTimeout(() => setToastMsg(null), 2600)
+  }, [])
+
+  // Speak function — uses user-selected voice with Indian accent priority
+  const speak = useCallback(
+    (text: string) => {
+      if (typeof window !== "undefined" && "speechSynthesis" in window) {
+        window.speechSynthesis.cancel()
+        const u = new SpeechSynthesisUtterance(text)
+        const langInfo = LANGUAGES.find((l) => l.code === lang)
+        const speechLang = langInfo?.speechLang ?? "hi-IN"
+        u.lang = speechLang
+
+        // Slower, clearer rate for elderly users
+        u.rate = 0.82
+        u.pitch = 1.0
+        u.volume = 1.0
+
+        const voices = window.speechSynthesis.getVoices()
+
+        if (selectedVoiceName) {
+          // Use user-selected voice
+          const picked = voices.find(v => v.name === selectedVoiceName)
+          if (picked) { u.voice = picked }
+        } else {
+          // Auto-pick best Indian voice
+          const wanted = speechLang.toLowerCase()
+          u.voice =
+            voices.find(v => v.lang.toLowerCase() === wanted) ??
+            voices.find(v => v.lang.toLowerCase().startsWith(wanted.split("-")[0])) ??
+            voices.find(v => v.lang.toLowerCase().startsWith("hi-in")) ??
+            voices.find(v => v.lang.toLowerCase().startsWith("en-in")) ??
+            voices[0]
+        }
+
+        window.speechSynthesis.speak(u)
+      } else {
+        toast(text)
+      }
+    },
+    [lang, toast, selectedVoiceName],
+  )
+
+  const speakKey = useCallback((key: TKey) => speak(translations[lang][key]), [lang, speak])
+
+  // Reminder checker — fires once per minute when time matches
+  useEffect(() => {
+    if (!onboardingDone) return
+    const check = () => {
+      const now = new Date()
+      const hh = now.getHours()
+      const mm = now.getMinutes()
+      const currentKey = `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}-${hh}:${mm}`
+      for (const reminder of reminders) {
+        if (reminder.done) continue
+        const match = reminder.time.trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/i)
+        if (!match) continue
+        let hour = Number(match[1])
+        const minute = Number(match[2])
+        const ampm = match[3]?.toUpperCase()
+        if (ampm === "PM" && hour < 12) hour += 12
+        if (ampm === "AM" && hour === 12) hour = 0
+        if (hour === hh && minute === mm && firedReminders.current[reminder.id] !== currentKey) {
+          firedReminders.current[reminder.id] = currentKey
+          setActiveReminder(reminder)
+        }
+      }
+    }
+    check()
+    const id = window.setInterval(check, 1000)
+    return () => window.clearInterval(id)
+  }, [onboardingDone, reminders])
+
+  // Speak active reminder aloud when it appears
+  useEffect(() => {
+    if (!activeReminder) return
+    const msg = `Reminder: ${activeReminder.label}. It is time now.`
+    // Small delay so the popup renders first and user gesture is satisfied
+    const id = window.setTimeout(() => speak(msg), 400)
+    return () => window.clearTimeout(id)
+  }, [activeReminder, speak])
+
+  const setLang = useCallback(
+    (code: LangCode) => {
+      setLangState(code)
+      const name = translations[code].langName
+      toast(`${translations[code].languageChanged} ${name}`)
+      if (typeof window !== "undefined" && "speechSynthesis" in window) {
+        window.speechSynthesis.cancel()
+        const u = new SpeechSynthesisUtterance(translations[code].v_welcome)
+        u.lang = LANGUAGES.find((l) => l.code === code)?.speechLang ?? "hi-IN"
+        u.rate = 0.82
+        window.speechSynthesis.speak(u)
+      }
+    },
+    [toast],
+  )
+
+  const navigate = useCallback((p: PageId) => {
+    setPage(p)
+    if (typeof window !== "undefined") window.scrollTo(0, 0)
+  }, [])
+
+  const toggleReminder = useCallback((id: string) => {
+    setReminders((prev) => prev.map((r) => (r.id === id ? { ...r, done: !r.done } : r)))
+  }, [])
+
+  const deleteReminder = useCallback((id: string) => {
+    setReminders((prev) => prev.filter((r) => r.id !== id))
+  }, [])
+
+  const addReminder = useCallback((label: string, time: string, icon: string) => {
+    setReminders((prev) => [
+      ...prev,
+      { id: `r${Date.now()}`, icon: icon || "⏰", label, time, done: false },
+    ])
+  }, [])
+
+  const cycleMood = useCallback(() => {
+    setMoodState((prev) => {
+      const idx = MOODS.findIndex((m) => m.label === prev.label)
+      return MOODS[(idx + 1) % MOODS.length]
+    })
+  }, [])
+
+  const setMood = useCallback((m: Mood) => setMoodState(m), [])
+
+  const addPoints = useCallback((n: number) => {
+    setScore((s) => Math.min(100, s + n))
+  }, [])
+
+  const completeGame = useCallback(() => setGamesCompleted((g) => Math.min(4, g + 1)), [])
+
+  const value = useMemo<AppContextType>(
+    () => ({
+      lang, setLang, t, languages: LANGUAGES, page, navigate,
+      speak, speakKey, textScale, setTextScale,
+      userName, userAge, onboardingDone, saveProfile,
+      reminders, toggleReminder, deleteReminder, addReminder,
+      mood, cycleMood, moods: MOODS, setMood,
+      toast, toastMsg,
+      score, addPoints, gamesCompleted, completeGame,
+      isLoggedIn, login, signup, logout, authError, setAuthError,
+      selectedVoiceName, setSelectedVoiceName, availableVoices,
+    }),
+    [
+      lang, setLang, t, page, navigate, speak, speakKey, textScale, setTextScale,
+      userName, userAge, onboardingDone, saveProfile,
+      reminders, toggleReminder, deleteReminder, addReminder,
+      mood, cycleMood, setMood, toast, toastMsg,
+      score, addPoints, gamesCompleted, completeGame,
+      isLoggedIn, login, signup, logout, authError, setAuthError,
+      selectedVoiceName, setSelectedVoiceName, availableVoices,
+    ],
+  )
+
+  return (
+    <AppContext.Provider value={value}>
+      <div style={{ fontSize: `${textScale}em` }}>{children}</div>
+
+      {/* Reminder Pop-up Notification */}
+      {activeReminder && (
+        <div
+          className="fixed inset-0 z-[100] grid place-items-center bg-black/50 p-4"
+          role="alertdialog"
+          aria-modal="true"
+          aria-label="Reminder notification"
+        >
+          <div className="w-full max-w-md animate-in fade-in zoom-in-95 rounded-3xl border border-primary/20 bg-card p-7 text-center shadow-2xl">
+            <div className="relative mx-auto grid size-20 place-items-center rounded-full bg-primary/10 text-4xl">
+              {activeReminder.icon}
+              <span className="absolute -right-1 -top-1 flex size-5 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white animate-pulse">!</span>
+            </div>
+            <p className="mt-5 text-sm font-bold uppercase tracking-widest text-primary">⏰ Reminder</p>
+            <h2 className="mt-2 text-2xl font-extrabold">{activeReminder.label}</h2>
+            <p className="mt-2 text-muted-foreground">It is time now. Please don't forget!</p>
+            <div className="mt-3 flex items-center justify-center gap-2 text-sm text-muted-foreground">
+              <span className="rounded-full bg-muted px-3 py-1 font-semibold">{activeReminder.time}</span>
+            </div>
+            <button
+              onClick={() => {
+                speak(`${activeReminder.label}. It is time now.`)
+              }}
+              className="mt-5 w-full rounded-2xl border border-primary/30 bg-primary/10 px-5 py-3 font-bold text-primary hover:bg-primary/20"
+            >
+              🔊 Read Again
+            </button>
+            <button
+              onClick={() => { toggleReminder(activeReminder.id); setActiveReminder(null) }}
+              className="mt-2 w-full rounded-2xl bg-primary px-5 py-4 font-extrabold text-primary-foreground"
+            >
+              ✓ Mark as Done
+            </button>
+            <button
+              onClick={() => setActiveReminder(null)}
+              className="mt-2 w-full rounded-2xl border border-border px-5 py-3 font-bold hover:bg-muted"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
+    </AppContext.Provider>
+  )
 }
