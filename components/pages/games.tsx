@@ -80,13 +80,15 @@ function MindSprint({ onExit }: { onExit: () => void }) {
   const [phase, setPhase] = useState<"show"|"answer"|"done">("show")
   const [round, setRound] = useState(1)
   const [score, setScore] = useState(0)
+  const [targetIndex, setTargetIndex] = useState(0)
 
   const levelSize = Math.min(8, round + 1)
-  const targetIndex = levelSize - 1
 
   function startLevel(level = 1) {
+    const size = Math.min(8, level + 1)
     setRound(level)
-    setSequence(shuffle(SPRINT_IMAGES).slice(0, Math.min(8, level + 1)))
+    setSequence(shuffle(SPRINT_IMAGES).slice(0, size))
+    setTargetIndex(Math.floor(Math.random() * size)) // ask about a random picture, not always the last one
     setChoices([])
     setPhase("show")
   }
