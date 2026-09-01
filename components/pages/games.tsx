@@ -113,7 +113,8 @@ function MindSprint({ onExit }: { onExit: () => void }) {
     } else toast(`Good try. The answer was ${sequence[targetIndex]?.label}.`)
     if (round >= 7) {
       setPhase("done")
-      completeGame()
+      const finalScore = right ? score + 1 : score
+      completeGame("Mind Sprint", Math.round((finalScore / 7) * 100))
     } else {
       startLevel(round + 1)
     }
@@ -263,7 +264,8 @@ function FamilyGame({ onExit }: { onExit: () => void }) {
     setAnswered(false)
     setLastCorrect(null)
     if (index + 1 >= rounds.length) {
-      setFinished(true); setActive(false); completeGame()
+      setFinished(true); setActive(false)
+      completeGame("Family Name Challenge", Math.round((score / rounds.length) * 100))
     } else {
       const nextIndex = index + 1
       setIndex(nextIndex)

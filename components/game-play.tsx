@@ -32,17 +32,20 @@ type Round = {
   choices: string[]
 }
 
-function buildRound(type: GameType): Round {
+// `level` (1–3) scales difficulty by adding extra distractor choices.
+// It's driven by the player's recent accuracy — see completeGame/gameLevel in app-provider.
+function buildRound(type: GameType, level = 1): Round {
+  const extra = level - 1
   const pool = ITEMS
   if (type === "memory") {
     const answer = sample(pool, 1)[0]
-    const distractors = sample(pool.filter((x) => x !== answer), 3)
+    const distractors = sample(pool.filter((x) => x !== answer), Math.min(pool.length - 1, 3 + extra))
     return { prompt: [answer], answer, choices: shuffle([answer, ...distractors]) }
   }
   if (type === "focus") {
     // target shown; find the matching one among choices
     const answer = sample(pool, 1)[0]
-    const distractors = sample(pool.filter((x) => x !== answer), 5)
+    const distractors = sample(pool.filter((x) => x !== answer), Math.min(pool.length - 1, 5 + extra))
     return { prompt: [answer], answer, choices: shuffle([answer, ...distractors]) }
   }
   // pattern: A B A B ? or A A B A A B ? — pick a repeating pattern, answer is next
@@ -53,7 +56,7 @@ function buildRound(type: GameType): Round {
     { seq: [a, b, b, a, b], next: b },
   ]
   const p = patterns[Math.floor(Math.random() * patterns.length)]
-  const distractors = sample(pool.filter((x) => x !== p.next), 3)
+  const distractors = sample(pool.filter((x) => x !== p.next), Math.min(pool.length - 1, 3 + extra))
   return { prompt: p.seq, answer: p.next, choices: shuffle([p.next, ...distractors]) }
 }
 
@@ -64,14 +67,15 @@ const META: Record<GameType, { titleKey: TKey; instrKey: TKey; icon: string }> =
 }
 
 export function GamePlay({ type, onExit }: { type: GameType; onExit: () => void }) {
-  const { t, speak, addPoints, completeGame, toast } = useApp()
+  const { t, speak, addPoints, completeGame, toast, gameLevel } = useApp()
   const meta = META[type]
+  const level = gameLevel[type] ?? 1
 
   const [round, setRound] = useState(1)
   const [correct, setCorrect] = useState(0)
   const [streak, setStreak] = useState(0)
   const [phase, setPhase] = useState<Phase>(type === "memory" ? "memorize" : "choose")
-  const [current, setCurrent] = useState<Round>(() => buildRound(type))
+  const [current, setCurrent] = useState<Round>(() => buildRound(type, level))
   const [picked, setPicked] = useState<string | null>(null)
   const timers = useRef<ReturnType<typeof setTimeout>[]>([])
 
@@ -94,9 +98,9 @@ export function GamePlay({ type, onExit }: { type: GameType; onExit: () => void 
 
   const startNextRound = useCallback(() => {
     setPicked(null)
-    setCurrent(buildRound(type))
+    setCurrent(buildRound(type, level))
     setPhase(type === "memory" ? "memorize" : "choose")
-  }, [type])
+  }, [type, level])
 
   const handleAnswer = useCallback(
     (choice: string) => {
@@ -104,8 +108,10 @@ export function GamePlay({ type, onExit }: { type: GameType; onExit: () => void 
       setPicked(choice)
       setPhase("feedback")
       const isRight = choice === current.answer
+      let finalCorrect = correct
       if (isRight) {
-        setCorrect((c) => c + 1)
+        finalCorrect = correct + 1
+        setCorrect(finalCorrect)
         setStreak((s) => s + 1)
         addPoints(1)
         toast(`${t("correct")} 👏`)
@@ -117,14 +123,14 @@ export function GamePlay({ type, onExit }: { type: GameType; onExit: () => void 
       addTimer(() => {
         if (round >= TOTAL_ROUNDS) {
           setPhase("complete")
-          completeGame()
+          completeGame(type, Math.round((finalCorrect / TOTAL_ROUNDS) * 100))
         } else {
           setRound((r) => r + 1)
           startNextRound()
         }
       }, 1050)
     },
-    [phase, current.answer, round, addPoints, toast, t, speak, addTimer, completeGame, startNextRound],
+    [phase, current.answer, round, correct, addPoints, toast, t, speak, addTimer, completeGame, startNextRound, type],
   )
 
   const accuracy = useMemo(
@@ -139,9 +145,9 @@ export function GamePlay({ type, onExit }: { type: GameType; onExit: () => void 
     setCorrect(0)
     setStreak(0)
     setPicked(null)
-    setCurrent(buildRound(type))
+    setCurrent(buildRound(type, level))
     setPhase(type === "memory" ? "memorize" : "choose")
-  }, [type])
+  }, [type, level])
 
   if (phase === "complete") {
     return (
@@ -242,7 +248,7 @@ export function GamePlay({ type, onExit }: { type: GameType; onExit: () => void 
       <div
         className={`grid gap-3 transition-opacity ${
           phase === "memorize" ? "pointer-events-none opacity-40" : "opacity-100"
-        } ${type === "focus" ? "grid-cols-3" : "grid-cols-2"}`}
+        } ${current.choices.length > 4 ? "grid-cols-3" : "grid-cols-2"}`}
       >
         {current.choices.map((c, i) => {
           const isAnswer = c === current.answer
@@ -279,6 +285,9 @@ export function GamePlay({ type, onExit }: { type: GameType; onExit: () => void 
         </span>
         <span className="text-accent">
           {t("streakLabel")} {streak} {streak > 0 ? "🔥" : ""}
+        </span>
+        <span className="text-muted-foreground" title="Difficulty adapts to your recent accuracy">
+          Level {level}/3
         </span>
       </div>
     </Panel>

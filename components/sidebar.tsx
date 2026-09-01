@@ -10,6 +10,7 @@ import {
   Settings,
   Brain,
   LogOut,
+  Phone,
 } from "lucide-react"
 import { useApp, type PageId } from "@/components/app-provider"
 import type { TKey } from "@/lib/i18n"
@@ -25,7 +26,7 @@ const NAV: { id: PageId; icon: typeof Brain; labelKey: TKey }[] = [
 ]
 
 export function Sidebar() {
-  const { page, navigate, t, userName, logout } = useApp()
+  const { page, navigate, t, userName, logout, caregiverContact, toast } = useApp()
 
   return (
     <aside className="fixed inset-y-0 left-0 z-20 flex w-[76px] flex-col bg-sidebar px-3 py-6 text-sidebar-foreground md:w-64 md:px-4">
@@ -35,6 +36,26 @@ export function Sidebar() {
         </div>
         <span className="hidden text-xl font-extrabold tracking-tight md:block">Smriti</span>
       </div>
+
+      {caregiverContact.phone ? (
+        <a
+          href={`tel:${caregiverContact.phone}`}
+          title={`Call ${caregiverContact.name || "for help"}`}
+          className="mb-3 flex items-center justify-center gap-2 rounded-xl bg-destructive px-3 py-3 text-sm font-extrabold text-destructive-foreground hover:opacity-90 md:justify-start"
+        >
+          <Phone className="size-4 shrink-0" aria-hidden />
+          <span className="hidden md:block">Call for Help</span>
+        </a>
+      ) : (
+        <button
+          onClick={() => { navigate("caregiver"); toast("Add an emergency contact number in Caregiver View") }}
+          title="Set up Call for Help"
+          className="mb-3 flex items-center justify-center gap-2 rounded-xl border border-dashed border-sidebar-foreground/30 px-3 py-3 text-sm font-semibold text-sidebar-foreground/70 hover:bg-sidebar-accent/60 md:justify-start"
+        >
+          <Phone className="size-4 shrink-0" aria-hidden />
+          <span className="hidden md:block">Set up Call for Help</span>
+        </button>
+      )}
 
       <nav className="flex flex-col gap-1.5" aria-label="Primary">
         {NAV.map(({ id, icon: Icon, labelKey }) => {

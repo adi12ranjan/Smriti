@@ -12,6 +12,7 @@ import { Caregiver } from "@/components/pages/caregiver"
 import { Profile } from "@/components/pages/profile"
 import { Onboarding } from "@/components/onboarding"
 import { AuthScreen } from "@/components/auth-screen"
+import { VoiceCommandButton } from "@/components/voice-commands"
 
 function CurrentPage() {
   const { page, onboardingDone } = useApp()
@@ -46,6 +47,7 @@ function App() {
         </div>
       </main>
       <Toast />
+      <VoiceCommandButton />
     </div>
   )
 }
