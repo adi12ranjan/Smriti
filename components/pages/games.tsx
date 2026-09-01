@@ -1,6 +1,6 @@
  "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { Clock3, RotateCcw, Trophy, Upload, Users } from "lucide-react"
 import { useApp } from "@/components/app-provider"
 import { Panel } from "@/components/ui-bits"
@@ -81,6 +81,7 @@ function MindSprint({ onExit }: { onExit: () => void }) {
   const [round, setRound] = useState(1)
   const [score, setScore] = useState(0)
   const [targetIndex, setTargetIndex] = useState(0)
+  const prevTargetIndex = useRef<number | null>(null)
 
   const levelSize = Math.min(8, round + 1)
 
@@ -88,7 +89,14 @@ function MindSprint({ onExit }: { onExit: () => void }) {
     const size = Math.min(8, level + 1)
     setRound(level)
     setSequence(shuffle(SPRINT_IMAGES).slice(0, size))
-    setTargetIndex(Math.floor(Math.random() * size)) // ask about a random picture, not always the last one
+    // Pick a random position to quiz — but never the same position as last
+    // level, so it never looks like it's stuck on one spot (e.g. always last).
+    let next = Math.floor(Math.random() * size)
+    if (size > 1 && next === prevTargetIndex.current) {
+      next = (next + 1 + Math.floor(Math.random() * (size - 1))) % size
+    }
+    prevTargetIndex.current = next
+    setTargetIndex(next)
     setChoices([])
     setPhase("show")
   }
