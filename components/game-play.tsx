@@ -32,20 +32,27 @@ type Round = {
   choices: string[]
 }
 
-// `level` (1–3) scales difficulty by adding extra distractor choices.
-// It's driven by the player's recent accuracy — see completeGame/gameLevel in app-provider.
+function randomInt(min: number, max: number): number {
+  return min + Math.floor(Math.random() * (max - min + 1))
+}
+
+// `level` (1–3) sets a difficulty floor; the actual distractor count is
+// randomized within a range each round so choices don't feel identical
+// round-to-round, while still trending harder as level goes up.
 function buildRound(type: GameType, level = 1): Round {
   const extra = level - 1
   const pool = ITEMS
   if (type === "memory") {
     const answer = sample(pool, 1)[0]
-    const distractors = sample(pool.filter((x) => x !== answer), Math.min(pool.length - 1, 3 + extra))
+    const count = Math.min(pool.length - 1, randomInt(3 + extra, 4 + extra))
+    const distractors = sample(pool.filter((x) => x !== answer), count)
     return { prompt: [answer], answer, choices: shuffle([answer, ...distractors]) }
   }
   if (type === "focus") {
     // target shown; find the matching one among choices
     const answer = sample(pool, 1)[0]
-    const distractors = sample(pool.filter((x) => x !== answer), Math.min(pool.length - 1, 5 + extra))
+    const count = Math.min(pool.length - 1, randomInt(4 + extra, 6 + extra))
+    const distractors = sample(pool.filter((x) => x !== answer), count)
     return { prompt: [answer], answer, choices: shuffle([answer, ...distractors]) }
   }
   // pattern: A B A B ? or A A B A A B ? — pick a repeating pattern, answer is next
@@ -56,7 +63,8 @@ function buildRound(type: GameType, level = 1): Round {
     { seq: [a, b, b, a, b], next: b },
   ]
   const p = patterns[Math.floor(Math.random() * patterns.length)]
-  const distractors = sample(pool.filter((x) => x !== p.next), Math.min(pool.length - 1, 3 + extra))
+  const count = Math.min(pool.length - 1, randomInt(3 + extra, 4 + extra))
+  const distractors = sample(pool.filter((x) => x !== p.next), count)
   return { prompt: p.seq, answer: p.next, choices: shuffle([p.next, ...distractors]) }
 }
 
