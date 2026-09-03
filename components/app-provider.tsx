@@ -11,6 +11,7 @@ import {
   type ReactNode,
 } from "react"
 import { LANGUAGES, translations, type LangCode, type TKey } from "@/lib/i18n"
+import { reminderVoiceLine } from "@/lib/voice-lines"
 
 export type Reminder = {
   id: string
@@ -501,7 +502,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // Speak active reminder aloud when it appears
   useEffect(() => {
     if (!activeReminder) return
-    const msg = `Reminder: ${activeReminder.label}. It is time now.`
+    const msg = reminderVoiceLine(activeReminder.icon, activeReminder.label)
     // Small delay so the popup renders first and user gesture is satisfied
     const id = window.setTimeout(() => speak(msg), 400)
     return () => window.clearTimeout(id)
@@ -659,7 +660,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             </div>
             <button
               onClick={() => {
-                speak(`${activeReminder.label}. It is time now.`)
+                speak(reminderVoiceLine(activeReminder.icon, activeReminder.label))
               }}
               className="mt-5 w-full rounded-2xl border border-primary/30 bg-primary/10 px-5 py-3 font-bold text-primary hover:bg-primary/20"
             >

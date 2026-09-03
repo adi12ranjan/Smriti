@@ -3,9 +3,10 @@
 import { useState } from "react"
 import { Brain, Eye, EyeOff, ArrowRight, UserPlus, LogIn } from "lucide-react"
 import { useApp } from "@/components/app-provider"
+import { VOICE } from "@/lib/voice-lines"
 
 export function AuthScreen() {
-  const { login, signup, authError, setAuthError } = useApp()
+  const { login, signup, authError, setAuthError, speak } = useApp()
   const [mode, setMode] = useState<"login" | "signup">("login")
   const [username, setUsername] = useState("")
   const [password, setPassword] = useState("")
@@ -19,7 +20,9 @@ export function AuthScreen() {
     setLoading(true)
     setTimeout(() => {
       if (mode === "login") {
-        login(username.trim(), password)
+        const ok = login(username.trim(), password)
+        // The submit click is a user gesture, so this also unlocks browser speech audio.
+        if (ok) speak(VOICE.welcome)
       } else {
         signup(username.trim(), password, displayName.trim())
       }
