@@ -5,6 +5,7 @@ import { ArrowLeft, Volume2, CheckCircle2, RotateCcw, Trophy } from "lucide-reac
 import { useApp } from "@/components/app-provider"
 import { Panel } from "@/components/ui-bits"
 import type { TKey } from "@/lib/i18n"
+import { SPEECH } from "@/lib/speech-messages"
 
 export type GameType = "memory" | "focus" | "pattern"
 
@@ -95,6 +96,44 @@ export function GamePlay({ type, onExit }: { type: GameType; onExit: () => void 
   useEffect(() => {
     return () => timers.current.forEach(clearTimeout)
   }, [])
+
+  // "Ready? Let's get started!" (plus a type-specific intro line and a short
+  // countdown) announced once when a session begins, and again on restart.
+  const announceStart = useCallback(() => {
+    const intro = type === "memory" ? SPEECH.memoryGameIntro : type === "focus" ? SPEECH.focusStart : SPEECH.gameStart
+    speak(intro)
+    addTimer(() => speak(SPEECH.countdown), 1500)
+  }, [type, speak, addTimer])
+
+  useEffect(() => {
+    announceStart()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Speak the completion line (plus a high-score shout-out, tracked locally
+  // per game type) the moment a session wraps up.
+  useEffect(() => {
+    if (phase !== "complete") return
+    const accuracyPct = Math.round((correct / TOTAL_ROUNDS) * 100)
+    let isHighScore = false
+    try {
+      const key = `smriti-highscore-${type}`
+      const prevBest = Number(localStorage.getItem(key) || 0)
+      if (accuracyPct > prevBest) {
+        isHighScore = true
+        localStorage.setItem(key, String(accuracyPct))
+      }
+    } catch {}
+    const completeMsg =
+      type === "memory" ? SPEECH.memoryComplete : type === "focus" ? SPEECH.focusComplete : t("sessionComplete")
+    speak(isHighScore && accuracyPct > 0 ? `${completeMsg} ${SPEECH.highScore}` : completeMsg)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase])
+
+  const handleExit = useCallback(() => {
+    speak(SPEECH.gameExit)
+    onExit()
+  }, [speak, onExit])
 
   // Memory phase: show the object briefly, then reveal choices.
   useEffect(() => {

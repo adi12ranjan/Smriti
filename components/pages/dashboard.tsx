@@ -23,7 +23,6 @@ function weeklyAccuracyTrend(log: ActivityEntry[]) {
 }
 
 const GAMES = [
-  { key: "memory", icon: "🧠", nameKey: "g_memory_name", descKey: "g_memory_desc" },
   { key: "focus", icon: "🔎", nameKey: "g_focus_name", descKey: "g_focus_desc" },
   { key: "pattern", icon: "🧩", nameKey: "g_pattern_name", descKey: "g_pattern_desc" },
 ] as const

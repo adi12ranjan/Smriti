@@ -11,6 +11,7 @@ import {
   type ReactNode,
 } from "react"
 import { LANGUAGES, translations, type LangCode, type TKey } from "@/lib/i18n"
+import { SPEECH, reminderSpeech, guessReminderKind, type ReminderKind } from "@/lib/speech-messages"
 
 export type Reminder = {
   id: string
@@ -18,6 +19,7 @@ export type Reminder = {
   label: string
   time: string
   done: boolean
+  kind?: ReminderKind
 }
 
 export type PageId =
@@ -53,10 +55,10 @@ const MOODS: Mood[] = [
 ]
 
 const INITIAL_REMINDERS: Reminder[] = [
-  { id: "r1", icon: "💊", label: "Blood pressure medicine", time: "6:00 PM", done: false },
-  { id: "r2", icon: "💧", label: "Drink water", time: "6:30 PM", done: false },
-  { id: "r3", icon: "🚶", label: "Evening walk", time: "7:00 PM", done: false },
-  { id: "r4", icon: "👨‍⚕️", label: "Doctor appointment", time: "Sun, 10:30 AM", done: false },
+  { id: "r1", icon: "💊", label: "Blood pressure medicine", time: "6:00 PM", done: false, kind: "medicine" },
+  { id: "r2", icon: "💧", label: "Drink water", time: "6:30 PM", done: false, kind: "water" },
+  { id: "r3", icon: "🚶", label: "Evening walk", time: "7:00 PM", done: false, kind: "walk" },
+  { id: "r4", icon: "👨‍⚕️", label: "Doctor appointment", time: "Sun, 10:30 AM", done: false, kind: "doctor" },
 ]
 
 // All per-user app data lives under one namespaced key so different accounts
@@ -134,7 +136,7 @@ type AppContextType = {
   reminders: Reminder[]
   toggleReminder: (id: string) => void
   deleteReminder: (id: string) => void
-  addReminder: (label: string, time: string, icon: string) => void
+  addReminder: (label: string, time: string, icon: string, kind?: ReminderKind) => void
   mood: Mood
   cycleMood: () => void
   moods: Mood[]
@@ -501,7 +503,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // Speak active reminder aloud when it appears
   useEffect(() => {
     if (!activeReminder) return
-    const msg = `Reminder: ${activeReminder.label}. It is time now.`
+    const msg = reminderSpeech(activeReminder.kind, activeReminder.label)
     // Small delay so the popup renders first and user gesture is satisfied
     const id = window.setTimeout(() => speak(msg), 400)
     return () => window.clearTimeout(id)
@@ -549,10 +551,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setReminders((prev) => prev.filter((r) => r.id !== id))
   }, [])
 
-  const addReminder = useCallback((label: string, time: string, icon: string) => {
+  const addReminder = useCallback((label: string, time: string, icon: string, kind?: ReminderKind) => {
     setReminders((prev) => [
       ...prev,
-      { id: `r${Date.now()}`, icon: icon || "⏰", label, time, done: false },
+      { id: `r${Date.now()}`, icon: icon || "⏰", label, time, done: false, kind: kind ?? guessReminderKind(label) },
     ])
   }, [])
 
@@ -659,7 +661,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             </div>
             <button
               onClick={() => {
-                speak(`${activeReminder.label}. It is time now.`)
+                speak(reminderSpeech(activeReminder.kind, activeReminder.label))
               }}
               className="mt-5 w-full rounded-2xl border border-primary/30 bg-primary/10 px-5 py-3 font-bold text-primary hover:bg-primary/20"
             >
