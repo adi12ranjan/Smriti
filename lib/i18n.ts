@@ -259,7 +259,7 @@ export const translations: Record<LangCode, Dict> = {
     offlineMode: "Offline mode",
     ready: "Ready",
     change: "Change",
-    v_welcome: "Welcome to Smriti. Let's take things one step at a time.",
+    v_welcome: "Namaste Anil. Your cognitive session is ready.",
     v_instructions: "Look carefully at the object, then choose the object you saw.",
     v_reminder: "It is time to take your medicine.",
     v_correct: "Correct. Great work. Keep going.",

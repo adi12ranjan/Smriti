@@ -4,18 +4,8 @@ import { useState } from "react"
 import { Plus, Check, Volume2, Trash2 } from "lucide-react"
 import { useApp } from "@/components/app-provider"
 import { Panel, Tag, Pill } from "@/components/ui-bits"
-import type { ReminderKind } from "@/lib/speech-messages"
 
 const ICONS = ["💊", "💧", "🚶", "🍽️", "👨‍⚕️", "😴", "⏰"]
-
-// Lets the built-in icons carry their matching voice line even if the
-// user types a label that doesn't obviously say "medicine" / "water" / etc.
-const ICON_KIND: Record<string, ReminderKind> = {
-  "💊": "medicine",
-  "💧": "water",
-  "🚶": "walk",
-  "👨‍⚕️": "doctor",
-}
 
 export function Reminders() {
   const { t, reminders, toggleReminder, deleteReminder, addReminder, toast, speakKey } = useApp()
@@ -27,7 +17,7 @@ export function Reminders() {
   function submit(e: React.FormEvent) {
     e.preventDefault()
     if (!label.trim()) return
-    addReminder(label.trim(), time.trim() || "Anytime", icon, ICON_KIND[icon])
+    addReminder(label.trim(), time.trim() || "Anytime", icon)
     toast(`${t("reminderAdded")} ✓`)
     setLabel("")
     setTime("")

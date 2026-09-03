@@ -123,7 +123,7 @@ export function Dashboard() {
             <h3 className="text-lg font-bold">{t("recommended")}</h3>
             <Tag tone="primary">{t("aiAdapted")}</Tag>
           </div>
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-2">
             {GAMES.map((g) => (
               <div key={g.key} className="rounded-2xl border border-border bg-muted/40 p-4">
                 <div className="text-3xl" aria-hidden>{g.icon}</div>
