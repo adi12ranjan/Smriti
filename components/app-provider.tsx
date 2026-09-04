@@ -12,6 +12,16 @@ import {
 } from "react"
 import { LANGUAGES, translations, type LangCode, type TKey } from "@/lib/i18n"
 import { reminderVoiceLine } from "@/lib/voice-lines"
+import {
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  signOut,
+  onAuthStateChanged,
+  updateProfile,
+  type User,
+} from "firebase/auth"
+import { doc, getDoc, setDoc } from "firebase/firestore"
+import { auth, db } from "@/lib/firebase"
 
 export type Reminder = {
   id: string
@@ -39,7 +49,7 @@ export type ActivityEntry = {
   type: "game" | "reminder" | "mood"
   label: string
   timestamp: number
-  value?: number // e.g. accuracy % for games
+  value?: number
 }
 
 export type CaregiverContact = { name: string; phone: string }
@@ -60,16 +70,22 @@ const INITIAL_REMINDERS: Reminder[] = [
   { id: "r4", icon: "👨‍⚕️", label: "Doctor appointment", time: "Sun, 10:30 AM", done: false },
 ]
 
-// All per-user app data lives under one namespaced key so different accounts
-// on the same browser never collide, and logging out never destroys it.
-function dataKey(username: string) {
-  return `smriti-data:${username.toLowerCase()}`
+function todayKey() {
+  return new Date().toISOString().slice(0, 10)
 }
 
-const AUTH_KEY = "smriti-users"
-const SESSION_KEY = "smriti-session"
-
-type AuthUser = { username: string; passwordHash: string; displayName: string }
+function computeStreak(log: ActivityEntry[]): number {
+  if (log.length === 0) return 0
+  const days = new Set(log.map((e) => new Date(e.timestamp).toISOString().slice(0, 10)))
+  let streak = 0
+  const d = new Date()
+  if (!days.has(d.toISOString().slice(0, 10))) d.setDate(d.getDate() - 1)
+  while (days.has(d.toISOString().slice(0, 10))) {
+    streak++
+    d.setDate(d.getDate() - 1)
+  }
+  return streak
+}
 
 type PersistedData = {
   name: string
@@ -87,34 +103,6 @@ type PersistedData = {
   gameLevel: Record<string, number>
   score: number
   gamesCompleted: number
-}
-
-// Simple hash for password storage (not cryptographic — client-side only demo)
-function simpleHash(str: string): string {
-  let hash = 0
-  for (let i = 0; i < str.length; i++) {
-    hash = ((hash << 5) - hash) + str.charCodeAt(i)
-    hash |= 0
-  }
-  return hash.toString(36)
-}
-
-function todayKey() {
-  return new Date().toISOString().slice(0, 10)
-}
-
-// How many consecutive days (ending today or yesterday) have any logged activity.
-function computeStreak(log: ActivityEntry[]): number {
-  if (log.length === 0) return 0
-  const days = new Set(log.map((e) => new Date(e.timestamp).toISOString().slice(0, 10)))
-  let streak = 0
-  const d = new Date()
-  if (!days.has(d.toISOString().slice(0, 10))) d.setDate(d.getDate() - 1)
-  while (days.has(d.toISOString().slice(0, 10))) {
-    streak++
-    d.setDate(d.getDate() - 1)
-  }
-  return streak
 }
 
 type AppContextType = {
@@ -148,8 +136,8 @@ type AppContextType = {
   completeGame: (label: string, accuracyPct?: number) => void
   // auth
   isLoggedIn: boolean
-  login: (username: string, password: string) => boolean
-  signup: (username: string, password: string, displayName: string) => boolean
+  login: (email: string, password: string) => Promise<boolean>
+  signup: (email: string, password: string, displayName: string) => Promise<boolean>
   logout: () => void
   authError: string | null
   setAuthError: (e: string | null) => void
@@ -201,9 +189,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // Auth state
   const [isLoggedIn, setIsLoggedIn] = useState(false)
   const [authError, setAuthError] = useState<string | null>(null)
-  const [username, setUsername] = useState<string | null>(null)
+  const [firebaseUser, setFirebaseUser] = useState<User | null>(null)
 
-  // Voice selection state
+  // Voice
   const [selectedVoiceName, setSelectedVoiceNameState] = useState<string | null>(null)
   const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([])
   const voicesLoaded = useRef(false)
@@ -220,7 +208,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [caregiverContact, setCaregiverContactState] = useState<CaregiverContact>(DEFAULT_CAREGIVER_CONTACT)
   const [shoutouts, setShoutouts] = useState<Shoutout[]>([])
 
-  const loadedUserRef = useRef<string | null>(null)
+  // Debounce timer for Firestore saves
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const dataLoaded = useRef(false)
 
   // Load voices
   useEffect(() => {
@@ -230,10 +220,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (voices.length > 0 && !voicesLoaded.current) {
         voicesLoaded.current = true
         setAvailableVoices(voices)
-        // Auto-select a good Indian English voice if none selected
         setSelectedVoiceNameState(prev => {
           if (prev) return prev
-          // Priority: Google हिन्दी, Google India English, Microsoft Heera, any en-IN
           const preferred =
             voices.find(v => v.name.includes("Google हिन्दी")) ??
             voices.find(v => v.name.toLowerCase().includes("google") && v.lang === "hi-IN") ??
@@ -253,7 +241,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => { window.speechSynthesis.onvoiceschanged = null }
   }, [])
 
-  // Reset all per-user state back to defaults (used when switching accounts / brand-new signup)
   const resetLocalState = useCallback(() => {
     setUserName("")
     setUserAge("")
@@ -271,14 +258,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setScore(78)
     setGamesCompleted(0)
     setOnboardingDone(false)
+    dataLoaded.current = false
   }, [])
 
-  // Load one user's saved data blob into in-memory state
-  const loadUserData = useCallback((uname: string) => {
+  // Load user data from Firestore
+  const loadUserData = useCallback(async (uid: string) => {
     try {
-      const raw = localStorage.getItem(dataKey(uname))
-      if (raw) {
-        const d: Partial<PersistedData> = JSON.parse(raw)
+      const snap = await getDoc(doc(db, "users", uid))
+      if (snap.exists()) {
+        const d = snap.data() as Partial<PersistedData>
         setUserName(d.name ?? "")
         setUserAge(d.age ?? "")
         if (d.lang) setLangState(d.lang)
@@ -301,52 +289,55 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } catch {
       resetLocalState()
     }
-    loadedUserRef.current = uname
+    dataLoaded.current = true
   }, [resetLocalState])
 
-  // Check session on mount
+  // Listen for Firebase auth state changes
   useEffect(() => {
-    try {
-      const session = localStorage.getItem(SESSION_KEY)
-      if (session) {
-        const s = JSON.parse(session)
-        if (s.loggedIn && s.username) {
-          setIsLoggedIn(true)
-          setUsername(s.username)
-          loadUserData(s.username)
-        }
+    const unsub = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        setFirebaseUser(user)
+        setIsLoggedIn(true)
+        loadUserData(user.uid)
+      } else {
+        setFirebaseUser(null)
+        setIsLoggedIn(false)
+        resetLocalState()
       }
-    } catch {}
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+    })
+    return unsub
+  }, [loadUserData, resetLocalState])
 
-  // Persist the current user's data as a single blob whenever anything relevant changes.
+  // Save user data to Firestore (debounced 1.5 s)
   useEffect(() => {
-    if (!username) return
-    // Avoid writing a half-loaded state over real data on the very first render after switching users.
-    if (loadedUserRef.current !== username) return
-    const blob: PersistedData = {
-      name: userName,
-      age: userAge,
-      lang,
-      mood,
-      textScale,
-      selectedVoiceName,
-      highContrast,
-      reminders,
-      moodHistory,
-      activityLog,
-      caregiverContact,
-      shoutouts,
-      gameLevel,
-      score,
-      gamesCompleted,
-    }
-    try {
-      localStorage.setItem(dataKey(username), JSON.stringify(blob))
-    } catch {}
+    if (!firebaseUser || !dataLoaded.current) return
+    if (saveTimer.current) clearTimeout(saveTimer.current)
+    saveTimer.current = setTimeout(async () => {
+      const blob: PersistedData = {
+        name: userName,
+        age: userAge,
+        lang,
+        mood,
+        textScale,
+        selectedVoiceName,
+        highContrast,
+        reminders,
+        moodHistory,
+        activityLog,
+        caregiverContact,
+        shoutouts,
+        gameLevel,
+        score,
+        gamesCompleted,
+      }
+      try {
+        await setDoc(doc(db, "users", firebaseUser.uid), blob, { merge: true })
+      } catch (e) {
+        console.error("Firestore save error:", e)
+      }
+    }, 1500)
   }, [
-    username, userName, userAge, lang, mood, textScale, selectedVoiceName, highContrast,
+    firebaseUser, userName, userAge, lang, mood, textScale, selectedVoiceName, highContrast,
     reminders, moodHistory, activityLog, caregiverContact, shoutouts, gameLevel, score, gamesCompleted,
   ])
 
@@ -354,57 +345,59 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setSelectedVoiceNameState(name)
   }, [])
 
-  const login = useCallback((usernameInput: string, password: string): boolean => {
-    try {
-      const usersRaw = localStorage.getItem(AUTH_KEY)
-      const users: AuthUser[] = usersRaw ? JSON.parse(usersRaw) : []
-      const user = users.find(u => u.username.toLowerCase() === usernameInput.toLowerCase())
-      if (!user) { setAuthError("User not found. Please sign up first."); return false }
-      if (user.passwordHash !== simpleHash(password)) { setAuthError("Incorrect password."); return false }
-      loadUserData(user.username)
-      setIsLoggedIn(true)
-      setUsername(user.username)
-      setAuthError(null)
-      localStorage.setItem(SESSION_KEY, JSON.stringify({ loggedIn: true, username: user.username }))
-      return true
-    } catch { setAuthError("Something went wrong. Try again."); return false }
-  }, [loadUserData])
+  // ── Firebase Auth helpers ─────────────────────────────────────────────────
 
-  const signup = useCallback((usernameInput: string, password: string, displayName: string): boolean => {
-    if (!usernameInput.trim() || !password.trim() || !displayName.trim()) {
+  // Convert Firebase auth error codes to friendly messages
+  function friendlyError(code: string): string {
+    switch (code) {
+      case "auth/email-already-in-use": return "Email already in use. Try logging in."
+      case "auth/invalid-email":        return "Invalid email address."
+      case "auth/weak-password":        return "Password must be at least 6 characters."
+      case "auth/user-not-found":       return "No account found. Please sign up first."
+      case "auth/wrong-password":       return "Incorrect password."
+      case "auth/invalid-credential":   return "Incorrect email or password."
+      case "auth/too-many-requests":    return "Too many attempts. Please try again later."
+      default:                          return "Something went wrong. Please try again."
+    }
+  }
+
+  const login = useCallback(async (email: string, password: string): Promise<boolean> => {
+    try {
+      await signInWithEmailAndPassword(auth, email.trim(), password)
+      setAuthError(null)
+      return true
+    } catch (err: unknown) {
+      const code = (err as { code?: string }).code ?? ""
+      setAuthError(friendlyError(code))
+      return false
+    }
+  }, [])
+
+  const signup = useCallback(async (email: string, password: string, displayName: string): Promise<boolean> => {
+    if (!email.trim() || !password.trim() || !displayName.trim()) {
       setAuthError("All fields are required."); return false
     }
-    if (password.length < 4) { setAuthError("Password must be at least 4 characters."); return false }
     try {
-      const usersRaw = localStorage.getItem(AUTH_KEY)
-      const users: AuthUser[] = usersRaw ? JSON.parse(usersRaw) : []
-      if (users.find(u => u.username.toLowerCase() === usernameInput.toLowerCase())) {
-        setAuthError("Username already taken. Try another."); return false
-      }
-      users.push({ username: usernameInput, passwordHash: simpleHash(password), displayName })
-      localStorage.setItem(AUTH_KEY, JSON.stringify(users))
-      resetLocalState()
-      loadedUserRef.current = usernameInput
-      setIsLoggedIn(true)
-      setUsername(usernameInput)
+      const cred = await createUserWithEmailAndPassword(auth, email.trim(), password)
+      await updateProfile(cred.user, { displayName: displayName.trim() })
       setAuthError(null)
-      localStorage.setItem(SESSION_KEY, JSON.stringify({ loggedIn: true, username: usernameInput }))
       return true
-    } catch { setAuthError("Something went wrong. Try again."); return false }
-  }, [resetLocalState])
+    } catch (err: unknown) {
+      const code = (err as { code?: string }).code ?? ""
+      setAuthError(friendlyError(code))
+      return false
+    }
+  }, [])
 
-  const logout = useCallback(() => {
-    // Only the session ends here — the user's saved data stays under their
-    // own key so signing back in restores everything exactly as it was.
-    setIsLoggedIn(false)
-    setUsername(null)
-    loadedUserRef.current = null
+  const logout = useCallback(async () => {
+    await signOut(auth)
     resetLocalState()
-    localStorage.removeItem(SESSION_KEY)
     if (typeof window !== "undefined" && "speechSynthesis" in window) {
       window.speechSynthesis.cancel()
     }
   }, [resetLocalState])
+
+  // ── Everything else unchanged from original ───────────────────────────────
 
   const setTextScale = useCallback((v: number) => {
     const next = Math.max(1, Math.min(1.8, v))
@@ -429,7 +422,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     toastTimer.current = setTimeout(() => setToastMsg(null), 2600)
   }, [])
 
-  // Speak function — uses user-selected voice with Indian accent priority
   const speak = useCallback(
     (text: string) => {
       if (typeof window !== "undefined" && "speechSynthesis" in window) {
@@ -438,20 +430,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const langInfo = LANGUAGES.find((l) => l.code === lang)
         const speechLang = langInfo?.speechLang ?? "hi-IN"
         u.lang = speechLang
-
-        // Slower, clearer rate for elderly users
         u.rate = 0.82
         u.pitch = 1.0
         u.volume = 1.0
-
         const voices = window.speechSynthesis.getVoices()
-
         if (selectedVoiceName) {
-          // Use user-selected voice
           const picked = voices.find(v => v.name === selectedVoiceName)
           if (picked) { u.voice = picked }
         } else {
-          // Auto-pick best Indian voice
           const wanted = speechLang.toLowerCase()
           u.voice =
             voices.find(v => v.lang.toLowerCase() === wanted) ??
@@ -460,7 +446,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
             voices.find(v => v.lang.toLowerCase().startsWith("en-in")) ??
             voices[0]
         }
-
         window.speechSynthesis.speak(u)
       } else {
         toast(text)
@@ -471,7 +456,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const speakKey = useCallback((key: TKey) => speak(translations[lang][key]), [lang, speak])
 
-  // Reminder checker — fires once per minute when time matches
   useEffect(() => {
     if (!onboardingDone) return
     const check = () => {
@@ -499,11 +483,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => window.clearInterval(id)
   }, [onboardingDone, reminders])
 
-  // Speak active reminder aloud when it appears
   useEffect(() => {
     if (!activeReminder) return
     const msg = reminderVoiceLine(activeReminder.icon, activeReminder.label)
-    // Small delay so the popup renders first and user gesture is satisfied
     const id = window.setTimeout(() => speak(msg), 400)
     return () => window.clearTimeout(id)
   }, [activeReminder, speak])
@@ -539,9 +521,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const toggleReminder = useCallback((id: string) => {
     setReminders((prev) => {
       const target = prev.find((r) => r.id === id)
-      if (target && !target.done) {
-        logActivity("reminder", target.label)
-      }
+      if (target && !target.done) { logActivity("reminder", target.label) }
       return prev.map((r) => (r.id === id ? { ...r, done: !r.done } : r))
     })
   }, [logActivity])
@@ -571,7 +551,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const idx = MOODS.findIndex((m) => m.label === prev.label)
       const next = MOODS[(idx + 1) % MOODS.length]
       applyMood(next)
-      return prev // applyMood already updates state; avoid double-set
+      return prev
     })
   }, [applyMood])
 
@@ -639,7 +619,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     <AppContext.Provider value={value}>
       <div className={highContrast ? "high-contrast" : ""} style={{ fontSize: `${textScale}em` }}>{children}</div>
 
-      {/* Reminder Pop-up Notification */}
       {activeReminder && (
         <div
           className="fixed inset-0 z-[100] grid place-items-center bg-black/50 p-4"
@@ -654,14 +633,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
             </div>
             <p className="mt-5 text-sm font-bold uppercase tracking-widest text-primary">⏰ Reminder</p>
             <h2 className="mt-2 text-2xl font-extrabold">{activeReminder.label}</h2>
-            <p className="mt-2 text-muted-foreground">It is time now. Please don't forget!</p>
+            <p className="mt-2 text-muted-foreground">It is time now. Please don&apos;t forget!</p>
             <div className="mt-3 flex items-center justify-center gap-2 text-sm text-muted-foreground">
               <span className="rounded-full bg-muted px-3 py-1 font-semibold">{activeReminder.time}</span>
             </div>
             <button
-              onClick={() => {
-                speak(reminderVoiceLine(activeReminder.icon, activeReminder.label))
-              }}
+              onClick={() => { speak(reminderVoiceLine(activeReminder.icon, activeReminder.label)) }}
               className="mt-5 w-full rounded-2xl border border-primary/30 bg-primary/10 px-5 py-3 font-bold text-primary hover:bg-primary/20"
             >
               🔊 Read Again

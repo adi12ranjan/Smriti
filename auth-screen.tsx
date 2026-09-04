@@ -8,26 +8,23 @@ import { VOICE } from "@/lib/voice-lines"
 export function AuthScreen() {
   const { login, signup, authError, setAuthError, speak } = useApp()
   const [mode, setMode] = useState<"login" | "signup">("login")
-  const [username, setUsername] = useState("")
+  const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [displayName, setDisplayName] = useState("")
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setAuthError(null)
     setLoading(true)
-    setTimeout(() => {
-      if (mode === "login") {
-        const ok = login(username.trim(), password)
-        // The submit click is a user gesture, so this also unlocks browser speech audio.
-        if (ok) speak(VOICE.welcome)
-      } else {
-        signup(username.trim(), password, displayName.trim())
-      }
-      setLoading(false)
-    }, 400)
+    if (mode === "login") {
+      const ok = await login(email.trim(), password)
+      if (ok) speak(VOICE.welcome)
+    } else {
+      await signup(email.trim(), password, displayName.trim())
+    }
+    setLoading(false)
   }
 
   return (
@@ -85,15 +82,16 @@ export function AuthScreen() {
           )}
 
           <label className="grid gap-1.5">
-            <span className="text-sm font-bold">Username</span>
+            <span className="text-sm font-bold">Email</span>
             <input
-              value={username}
-              onChange={e => setUsername(e.target.value)}
+              type="email"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
               required
               autoFocus={mode === "login"}
-              placeholder="ramesh123"
+              placeholder="ramesh@example.com"
               autoCapitalize="none"
-              autoComplete="username"
+              autoComplete="email"
               className="rounded-2xl border border-border bg-background px-4 py-3 outline-none focus:border-primary"
             />
           </label>
@@ -106,7 +104,7 @@ export function AuthScreen() {
                 value={password}
                 onChange={e => setPassword(e.target.value)}
                 required
-                placeholder={mode === "signup" ? "Min. 4 characters" : "Your password"}
+                placeholder={mode === "signup" ? "Min. 6 characters" : "Your password"}
                 autoComplete={mode === "login" ? "current-password" : "new-password"}
                 className="w-full rounded-2xl border border-border bg-background px-4 py-3 pr-12 outline-none focus:border-primary"
               />
