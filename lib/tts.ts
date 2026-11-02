@@ -167,9 +167,21 @@ function waitForVoices(timeoutMs: number): Promise<SpeechSynthesisVoice[]> {
 }
 
 let activeToken = 0
+let currentAudio: HTMLAudioElement | null = null
+
+// Special "voice name" meaning: use the online voice service (/api/tts) instead of
+// the voices installed on the device. Works on any device with internet, which is
+// how Hindi / Bengali / Assamese / Manipuri are spoken where no local voice exists.
+export const ONLINE_VOICE = "__online__"
 
 export function stopSpeaking(): void {
   activeToken++
+  if (currentAudio) {
+    currentAudio.onended = null
+    currentAudio.onerror = null
+    currentAudio.pause()
+    currentAudio = null
+  }
   if (ttsSupported()) window.speechSynthesis.cancel()
 }
 
@@ -180,31 +192,73 @@ export type SpeakOptions = {
   onEnd?: () => void
 }
 
-// Speak `text` in the given app language. Returns false if speech isn't supported.
+// Play chunks through the online voice service. Calls onFail(remaining) if a chunk
+// can't be loaded/played so the caller can fall back to a device voice.
+function playOnline(
+  chunks: string[],
+  lang: LangCode,
+  rate: number,
+  token: number,
+  onEnd: (() => void) | undefined,
+  onFail: (remaining: string[]) => void,
+) {
+  let i = 0
+  const next = () => {
+    if (token !== activeToken) return
+    if (i >= chunks.length) {
+      currentAudio = null
+      onEnd?.()
+      return
+    }
+    const a = new Audio(`/api/tts?lang=${lang}&q=${encodeURIComponent(chunks[i])}`)
+    currentAudio = a
+    a.playbackRate = Math.max(0.6, Math.min(1.4, rate / DEFAULT_RATE))
+    a.onended = () => {
+      i++
+      next()
+    }
+    a.onerror = () => {
+      if (token === activeToken) onFail(chunks.slice(i))
+    }
+    a.play().catch(() => {
+      if (token === activeToken) onFail(chunks.slice(i))
+    })
+  }
+  next()
+}
+
+// Speak `text` in the given app language. Returns false if nothing can speak.
 export function speakText(text: string, opts: SpeakOptions): boolean {
-  if (!ttsSupported()) return false
-  const synth = window.speechSynthesis
+  const synthOk = ttsSupported()
   const chunks = chunkText(cleanText(text))
   if (chunks.length === 0) return true
+  if (!synthOk && typeof Audio === "undefined") return false
 
   const token = ++activeToken
-  const wasBusy = synth.speaking || synth.pending
-  synth.cancel()
+  const synth = synthOk ? window.speechSynthesis : null
+  const wasBusy = !!synth && (synth.speaking || synth.pending)
+  if (currentAudio) {
+    currentAudio.onended = null
+    currentAudio.onerror = null
+    currentAudio.pause()
+    currentAudio = null
+  }
+  synth?.cancel()
 
   const langTag = LANGUAGES.find((l) => l.code === opts.lang)?.speechLang ?? "en-IN"
   const rate = Math.max(MIN_RATE, Math.min(MAX_RATE, opts.rate ?? DEFAULT_RATE))
 
-  const run = (voices: SpeechSynthesisVoice[]) => {
-    if (token !== activeToken) return
+  const runSynth = (list: string[], voices: SpeechSynthesisVoice[]) => {
+    if (!synth || token !== activeToken) return
     const voice = pickVoice(voices, opts.lang, opts.voiceName)
     let i = 0
     const next = () => {
       if (token !== activeToken) return
-      if (i >= chunks.length) {
+      if (i >= list.length) {
         opts.onEnd?.()
         return
       }
-      const u = new SpeechSynthesisUtterance(chunks[i++])
+      const u = new SpeechSynthesisUtterance(list[i++])
       u.lang = voice?.lang ?? langTag
       if (voice) u.voice = voice
       u.rate = rate
@@ -221,9 +275,29 @@ export function speakText(text: string, opts: SpeakOptions): boolean {
   }
 
   const start = () => {
-    const voices = synth.getVoices()
-    if (voices.length > 0) run(voices)
-    else void waitForVoices(1500).then(run) // Chrome loads voices lazily
+    const voices = synth ? synth.getVoices() : []
+    const chosen = opts.voiceName && opts.voiceName !== ONLINE_VOICE
+      ? voices.find((v) => v.name === opts.voiceName)
+      : undefined
+    const nonEnglish = opts.lang !== "en"
+    // Use the online voice for non-English when asked for, or when the device has
+    // no voice for the language (or voices haven't loaded / speech is unsupported).
+    const useOnline =
+      typeof Audio !== "undefined" &&
+      nonEnglish &&
+      (opts.voiceName === ONLINE_VOICE ||
+        !synth ||
+        (!chosen && !hasNativeVoice(voices, opts.lang)))
+
+    if (useOnline) {
+      playOnline(chunks, opts.lang, rate, token, opts.onEnd, (remaining) => {
+        // Online voice unavailable (offline etc.): fall back to the closest device voice.
+        if (synth && token === activeToken) runSynth(remaining, synth.getVoices())
+      })
+      return
+    }
+    if (voices.length > 0) runSynth(chunks, voices)
+    else void waitForVoices(1500).then((v) => runSynth(chunks, v)) // Chrome loads voices lazily
   }
 
   // Chrome can drop a speak() issued in the same tick as cancel() of active speech.

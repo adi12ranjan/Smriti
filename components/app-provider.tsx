@@ -11,7 +11,7 @@ import {
   type ReactNode,
 } from "react"
 import { LANGUAGES, translations, type LangCode, type TKey } from "@/lib/i18n"
-import { speakText, ttsSupported, DEFAULT_RATE } from "@/lib/tts"
+import { speakText, DEFAULT_RATE } from "@/lib/tts"
 import { voiceLine, reminderLineFor, type LineKey } from "@/lib/voice-i18n"
 import {
   createUserWithEmailAndPassword,
@@ -426,7 +426,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const speak = useCallback(
     (text: string) => {
-      if (!ttsSupported() || !speakText(text, { lang, voiceName: selectedVoiceName, rate: voiceRate })) {
+      if (!speakText(text, { lang, voiceName: selectedVoiceName, rate: voiceRate })) {
         toast(text)
       }
     },

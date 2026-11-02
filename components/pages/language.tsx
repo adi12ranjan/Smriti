@@ -7,6 +7,7 @@ import type { TKey } from "@/lib/i18n"
 import {
   speakText,
   stopSpeaking,
+  ONLINE_VOICE,
   voicesForLang,
   pickVoice,
   voiceLabel,
@@ -26,6 +27,13 @@ export function Language() {
   const langVoices = voicesForLang(availableVoices, lang)
   const activeVoice = pickVoice(availableVoices, lang, selectedVoiceName)
   const nativeVoice = hasNativeVoice(availableVoices, lang)
+  const canOnline = lang !== "en"
+  // Non-English with no local voice for the language (or online chosen) -> online voice.
+  const pickedLocal = !!selectedVoiceName && langVoices.some((v) => v.name === selectedVoiceName)
+  const selectValue =
+    canOnline && (selectedVoiceName === ONLINE_VOICE || (!nativeVoice && !pickedLocal))
+      ? ONLINE_VOICE
+      : activeVoice?.name ?? ""
   const previewVoice = (voiceName: string | null, rate: number) =>
     speakText(voiceLine(lang, "welcome"), { lang, voiceName, rate })
 
@@ -114,14 +122,15 @@ export function Language() {
               Voice
               <select
                 className="mt-1.5 w-full rounded-xl border border-border bg-card p-3 text-base"
-                value={activeVoice?.name ?? ""}
-                disabled={langVoices.length === 0}
+                value={selectValue}
+                disabled={langVoices.length === 0 && !canOnline}
                 onChange={(e) => {
                   setSelectedVoiceName(e.target.value)
                   previewVoice(e.target.value, voiceRate)
                 }}
               >
-                {langVoices.length === 0 && <option value="">No voice installed</option>}
+                {langVoices.length === 0 && !canOnline && <option value="">No voice installed</option>}
+                {canOnline && <option value={ONLINE_VOICE}>Online voice (works on every device) ★</option>}
                 {langVoices.map((v) => (
                   <option key={v.voiceURI || v.name} value={v.name}>
                     {voiceLabel(v)}
@@ -149,11 +158,10 @@ export function Language() {
               </span>
             </label>
           </div>
-          {!nativeVoice && (
+          {canOnline && !nativeVoice && (
             <p className="mt-3 rounded-xl bg-muted/60 p-3 text-sm text-muted-foreground">
-              {langVoices.length > 0
-                ? "This device has no dedicated voice for this language, so a close regional voice is used."
-                : "This device has no voice for this language. Install one in your device's text-to-speech settings (or try Chrome / Edge); text is still shown on screen."}
+              This device has no installed voice for this language, so Smriti uses the online voice
+              (needs internet). If it can&apos;t connect, the closest installed voice is used instead.
             </p>
           )}
           <div className="mt-4 flex flex-wrap gap-2">
