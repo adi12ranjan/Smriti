@@ -21,7 +21,7 @@ import { voiceLine } from "@/lib/voice-i18n"
 export function Language() {
   const {
     t, languages, lang, setLang, speakKey,
-    availableVoices, selectedVoiceName, setSelectedVoiceName, voiceRate, setVoiceRate,
+    availableVoices, selectedVoiceName, setSelectedVoiceName, voiceRate, setVoiceRate, toast,
   } = useApp()
 
   const langVoices = voicesForLang(availableVoices, lang)
@@ -35,7 +35,12 @@ export function Language() {
       ? ONLINE_VOICE
       : activeVoice?.name ?? ""
   const previewVoice = (voiceName: string | null, rate: number) =>
-    speakText(voiceLine(lang, "welcome"), { lang, voiceName, rate })
+    speakText(voiceLine(lang, "welcome"), {
+      lang,
+      voiceName,
+      rate,
+      onError: () => toast("Voice could not play. Check your internet connection and device sound."),
+    })
 
   const voiceItems: { labelKey: TKey; voiceKey: TKey }[] = [
     { labelKey: "readInstructions", voiceKey: "v_instructions" },

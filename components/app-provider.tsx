@@ -419,6 +419,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     toastTimer.current = setTimeout(() => setToastMsg(null), 2600)
   }, [])
 
+  const voiceUnavailableMsg = "Voice could not play. Check your internet connection and device sound."
+
   const setVoiceRate = useCallback((v: number) => {
     setVoiceRateState(v)
     try { window.localStorage.setItem("smriti.voiceRate", String(v)) } catch {}
@@ -426,7 +428,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const speak = useCallback(
     (text: string) => {
-      if (!speakText(text, { lang, voiceName: selectedVoiceName, rate: voiceRate })) {
+      if (!speakText(text, { lang, voiceName: selectedVoiceName, rate: voiceRate, onError: () => toast(voiceUnavailableMsg) })) {
         toast(text)
       }
     },

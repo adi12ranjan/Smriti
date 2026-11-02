@@ -190,10 +190,35 @@ export type SpeakOptions = {
   voiceName?: string | null
   rate?: number
   onEnd?: () => void
+  // called when no voice at all could speak the text
+  onError?: () => void
+}
+
+// Online voice sources for one chunk, tried in order:
+//  1. straight from the speech service (an <audio> tag isn't blocked by CORS and
+//     uses the user's own connection, which works best),
+//  2. our own /api/tts server route (in case the direct call is blocked).
+// Assamese tries its own voice first, then Bengali; Manipuri (written in Bengali
+// script in this app) uses the Bengali voice.
+const ONLINE_TL: Record<LangCode, string[]> = {
+  en: ["en-IN"],
+  hi: ["hi"],
+  bn: ["bn"],
+  as: ["as", "bn"],
+  mni: ["bn"],
+}
+
+function onlineSources(lang: LangCode, text: string): string[] {
+  const q = encodeURIComponent(text)
+  const direct = ONLINE_TL[lang].map(
+    (tl) =>
+      `https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=${tl}&q=${q}&total=1&idx=0&textlen=${text.length}`,
+  )
+  return [...direct, `/api/tts?lang=${lang}&q=${q}`]
 }
 
 // Play chunks through the online voice service. Calls onFail(remaining) if a chunk
-// can't be loaded/played so the caller can fall back to a device voice.
+// can't be loaded/played from any source so the caller can fall back to a device voice.
 function playOnline(
   chunks: string[],
   lang: LangCode,
@@ -210,19 +235,32 @@ function playOnline(
       onEnd?.()
       return
     }
-    const a = new Audio(`/api/tts?lang=${lang}&q=${encodeURIComponent(chunks[i])}`)
-    currentAudio = a
-    a.playbackRate = Math.max(0.6, Math.min(1.4, rate / DEFAULT_RATE))
-    a.onended = () => {
-      i++
-      next()
+    const sources = onlineSources(lang, chunks[i])
+    let s = 0
+    const tryNext = () => {
+      if (token !== activeToken) return
+      if (s >= sources.length) {
+        onFail(chunks.slice(i))
+        return
+      }
+      const a = new Audio(sources[s++])
+      currentAudio = a
+      a.playbackRate = Math.max(0.6, Math.min(1.4, rate / DEFAULT_RATE))
+      a.onended = () => {
+        i++
+        next()
+      }
+      a.onerror = () => tryNext()
+      a.play().catch((err: unknown) => {
+        // Autoplay blocked: trying other sources won't help.
+        if ((err as { name?: string })?.name === "NotAllowedError") {
+          if (token === activeToken) onFail(chunks.slice(i))
+        } else {
+          tryNext()
+        }
+      })
     }
-    a.onerror = () => {
-      if (token === activeToken) onFail(chunks.slice(i))
-    }
-    a.play().catch(() => {
-      if (token === activeToken) onFail(chunks.slice(i))
-    })
+    tryNext()
   }
   next()
 }
@@ -292,7 +330,10 @@ export function speakText(text: string, opts: SpeakOptions): boolean {
     if (useOnline) {
       playOnline(chunks, opts.lang, rate, token, opts.onEnd, (remaining) => {
         // Online voice unavailable (offline etc.): fall back to the closest device voice.
-        if (synth && token === activeToken) runSynth(remaining, synth.getVoices())
+        if (token !== activeToken) return
+        const voices = synth ? synth.getVoices() : []
+        if (synth && pickVoice(voices, opts.lang, opts.voiceName)) runSynth(remaining, voices)
+        else opts.onError?.()
       })
       return
     }
