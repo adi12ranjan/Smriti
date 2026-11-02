@@ -3,10 +3,9 @@
 import { useState } from "react"
 import { Brain, Eye, EyeOff, ArrowRight, UserPlus, LogIn } from "lucide-react"
 import { useApp } from "@/components/app-provider"
-import { VOICE } from "@/lib/voice-lines"
 
 export function AuthScreen() {
-  const { login, signup, authError, setAuthError, speak } = useApp()
+  const { login, signup, authError, setAuthError, speakLine } = useApp()
   const [mode, setMode] = useState<"login" | "signup">("login")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
@@ -20,7 +19,7 @@ export function AuthScreen() {
     setLoading(true)
     if (mode === "login") {
       const ok = await login(email.trim(), password)
-      if (ok) speak(VOICE.welcome)
+      if (ok) speakLine("welcome")
     } else {
       await signup(email.trim(), password, displayName.trim())
     }

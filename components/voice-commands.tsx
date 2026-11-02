@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { Mic, MicOff } from "lucide-react"
 import { useApp, type PageId } from "@/components/app-provider"
+import type { TKey } from "@/lib/i18n"
 
 // Minimal shape of the Web Speech API — not in standard TS lib.dom yet.
 type SpeechRecognitionLike = {
@@ -16,6 +17,16 @@ type SpeechRecognitionLike = {
   stop: () => void
 }
 
+const NAV_KEYS: Record<PageId, TKey> = {
+  dashboard: "nav_day",
+  games: "nav_games",
+  memory: "nav_memory",
+  reminders: "nav_reminders",
+  language: "nav_language",
+  caregiver: "nav_caregiver",
+  profile: "nav_profile",
+}
+
 const NAV_COMMANDS: { keywords: string[]; page: PageId; label: string }[] = [
   { keywords: ["game", "games", "play"], page: "games", label: "games" },
   { keywords: ["memory", "coach"], page: "memory", label: "memory coach" },
@@ -27,7 +38,7 @@ const NAV_COMMANDS: { keywords: string[]; page: PageId; label: string }[] = [
 ]
 
 export function VoiceCommandButton() {
-  const { navigate, speakKey, speak, toast } = useApp()
+  const { navigate, speakKey, speakLine, toast, t } = useApp()
   const [listening, setListening] = useState(false)
   const [supported, setSupported] = useState(false)
   const recogRef = useRef<SpeechRecognitionLike | null>(null)
@@ -50,12 +61,12 @@ export function VoiceCommandButton() {
     if (match) {
       navigate(match.page)
       toast(`Opening ${match.label}`)
-      speak(`Opening ${match.label}`)
+      speakLine("opening", t(NAV_KEYS[match.page]))
       return
     }
 
     toast(`Didn't catch that: "${text}". Try "open games" or "open reminders".`)
-  }, [navigate, speak, speakKey, toast])
+  }, [navigate, speakLine, speakKey, toast, t])
 
   const start = useCallback(() => {
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition

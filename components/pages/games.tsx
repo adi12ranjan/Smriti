@@ -235,7 +235,7 @@ function generateSimilarNames(correctName: string, allNames: string[]): string[]
 }
 
 function FamilyGame({ onExit }: { onExit: () => void }) {
-  const { addPoints, completeGame, toast, speak } = useApp()
+  const { addPoints, completeGame, toast, speakLine } = useApp()
   const [family, setFamily] = useState<Family[]>(() => {
     try { return JSON.parse(localStorage.getItem("smriti-family") || "[]") } catch { return [] }
   })
@@ -292,10 +292,10 @@ function FamilyGame({ onExit }: { onExit: () => void }) {
     if (correct) {
       setScore(s => s + 1)
       addPoints(2)
-      speak("Bilkul sahi! Bahut badhiya.") // "Absolutely correct! Very good." in Hindi
+      speakLine("correct") // spoken in the selected language
       toast("✓ Correct! Well done.")
     } else {
-      speak(`Koi baat nahi. Yeh ${rounds[index].name} hai.`) // "No problem. This is [name]."
+      speakLine("wrong", rounds[index].name)
       toast(`Good try! This is ${rounds[index].name}.`)
     }
     // Auto-advance after 1.5 seconds

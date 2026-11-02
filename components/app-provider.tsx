@@ -11,7 +11,8 @@ import {
   type ReactNode,
 } from "react"
 import { LANGUAGES, translations, type LangCode, type TKey } from "@/lib/i18n"
-import { reminderVoiceLine } from "@/lib/voice-lines"
+import { speakText, ttsSupported, DEFAULT_RATE } from "@/lib/tts"
+import { voiceLine, reminderLineFor, type LineKey } from "@/lib/voice-i18n"
 import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
@@ -114,6 +115,10 @@ type AppContextType = {
   navigate: (page: PageId) => void
   speak: (text: string) => void
   speakKey: (key: TKey) => void
+  // speak a built-in line in the current language (translated)
+  speakLine: (key: LineKey, arg?: string) => void
+  voiceRate: number
+  setVoiceRate: (v: number) => void
   textScale: number
   setTextScale: (v: number) => void
   userName: string
@@ -194,7 +199,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // Voice
   const [selectedVoiceName, setSelectedVoiceNameState] = useState<string | null>(null)
   const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([])
-  const voicesLoaded = useRef(false)
+  const [voiceRate, setVoiceRateState] = useState(DEFAULT_RATE)
 
   // Accessibility
   const [highContrast, setHighContrastState] = useState(false)
@@ -212,33 +217,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const dataLoaded = useRef(false)
 
-  // Load voices
+  // Load voices (Chrome/Edge load them asynchronously and may add more later,
+  // e.g. online neural voices, so refresh on every change).
   useEffect(() => {
     if (typeof window === "undefined" || !("speechSynthesis" in window)) return
     const load = () => {
       const voices = window.speechSynthesis.getVoices()
-      if (voices.length > 0 && !voicesLoaded.current) {
-        voicesLoaded.current = true
-        setAvailableVoices(voices)
-        setSelectedVoiceNameState(prev => {
-          if (prev) return prev
-          const preferred =
-            voices.find(v => v.name.includes("Google हिन्दी")) ??
-            voices.find(v => v.name.toLowerCase().includes("google") && v.lang === "hi-IN") ??
-            voices.find(v => v.name.toLowerCase().includes("heera")) ??
-            voices.find(v => v.name.toLowerCase().includes("ravi")) ??
-            voices.find(v => v.lang === "hi-IN") ??
-            voices.find(v => v.lang === "en-IN") ??
-            voices.find(v => v.lang.startsWith("en-IN")) ??
-            voices.find(v => v.lang.startsWith("en")) ??
-            null
-          return preferred?.name ?? null
-        })
-      }
+      if (voices.length > 0) setAvailableVoices(voices)
     }
     load()
-    window.speechSynthesis.onvoiceschanged = load
-    return () => { window.speechSynthesis.onvoiceschanged = null }
+    window.speechSynthesis.addEventListener?.("voiceschanged", load)
+    return () => { window.speechSynthesis.removeEventListener?.("voiceschanged", load) }
+  }, [])
+
+  // Speaking speed (device-level preference)
+  useEffect(() => {
+    try {
+      const saved = Number(window.localStorage.getItem("smriti.voiceRate"))
+      if (saved >= 0.5 && saved <= 1.5) setVoiceRateState(saved)
+    } catch {}
   }, [])
 
   const resetLocalState = useCallback(() => {
@@ -422,36 +419,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
     toastTimer.current = setTimeout(() => setToastMsg(null), 2600)
   }, [])
 
+  const setVoiceRate = useCallback((v: number) => {
+    setVoiceRateState(v)
+    try { window.localStorage.setItem("smriti.voiceRate", String(v)) } catch {}
+  }, [])
+
   const speak = useCallback(
     (text: string) => {
-      if (typeof window !== "undefined" && "speechSynthesis" in window) {
-        window.speechSynthesis.cancel()
-        const u = new SpeechSynthesisUtterance(text)
-        const langInfo = LANGUAGES.find((l) => l.code === lang)
-        const speechLang = langInfo?.speechLang ?? "hi-IN"
-        u.lang = speechLang
-        u.rate = 0.82
-        u.pitch = 1.0
-        u.volume = 1.0
-        const voices = window.speechSynthesis.getVoices()
-        if (selectedVoiceName) {
-          const picked = voices.find(v => v.name === selectedVoiceName)
-          if (picked) { u.voice = picked }
-        } else {
-          const wanted = speechLang.toLowerCase()
-          u.voice =
-            voices.find(v => v.lang.toLowerCase() === wanted) ??
-            voices.find(v => v.lang.toLowerCase().startsWith(wanted.split("-")[0])) ??
-            voices.find(v => v.lang.toLowerCase().startsWith("hi-in")) ??
-            voices.find(v => v.lang.toLowerCase().startsWith("en-in")) ??
-            voices[0]
-        }
-        window.speechSynthesis.speak(u)
-      } else {
+      if (!ttsSupported() || !speakText(text, { lang, voiceName: selectedVoiceName, rate: voiceRate })) {
         toast(text)
       }
     },
-    [lang, toast, selectedVoiceName],
+    [lang, toast, selectedVoiceName, voiceRate],
+  )
+
+  const speakLine = useCallback(
+    (key: LineKey, arg?: string) => speak(voiceLine(lang, key, arg)),
+    [lang, speak],
   )
 
   const speakKey = useCallback((key: TKey) => speak(translations[lang][key]), [lang, speak])
@@ -485,25 +469,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!activeReminder) return
-    const msg = reminderVoiceLine(activeReminder.icon, activeReminder.label)
+    const msg = reminderLineFor(lang, activeReminder.icon, activeReminder.label)
     const id = window.setTimeout(() => speak(msg), 400)
     return () => window.clearTimeout(id)
-  }, [activeReminder, speak])
+  }, [activeReminder, speak, lang])
 
   const setLang = useCallback(
     (code: LangCode) => {
       setLangState(code)
       const name = translations[code].langName
       toast(`${translations[code].languageChanged} ${name}`)
-      if (typeof window !== "undefined" && "speechSynthesis" in window) {
-        window.speechSynthesis.cancel()
-        const u = new SpeechSynthesisUtterance(translations[code].v_welcome)
-        u.lang = LANGUAGES.find((l) => l.code === code)?.speechLang ?? "hi-IN"
-        u.rate = 0.82
-        window.speechSynthesis.speak(u)
-      }
+      speakText(translations[code].v_welcome, { lang: code, voiceName: selectedVoiceName, rate: voiceRate })
     },
-    [toast],
+    [toast, selectedVoiceName, voiceRate],
   )
 
   const navigate = useCallback((p: PageId) => {
@@ -589,7 +567,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const value = useMemo<AppContextType>(
     () => ({
       lang, setLang, t, languages: LANGUAGES, page, navigate,
-      speak, speakKey, textScale, setTextScale,
+      speak, speakKey, speakLine, voiceRate, setVoiceRate, textScale, setTextScale,
       userName, userAge, onboardingDone, saveProfile,
       reminders, toggleReminder, deleteReminder, addReminder,
       mood, cycleMood, moods: MOODS, setMood,
@@ -602,7 +580,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       caregiverContact, setCaregiverContact, shoutouts, addShoutout,
     }),
     [
-      lang, setLang, t, page, navigate, speak, speakKey, textScale, setTextScale,
+      lang, setLang, t, page, navigate, speak, speakKey, speakLine, voiceRate, setVoiceRate, textScale, setTextScale,
       userName, userAge, onboardingDone, saveProfile,
       reminders, toggleReminder, deleteReminder, addReminder,
       mood, cycleMood, setMood, toast, toastMsg,
@@ -638,7 +616,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
               <span className="rounded-full bg-muted px-3 py-1 font-semibold">{activeReminder.time}</span>
             </div>
             <button
-              onClick={() => { speak(reminderVoiceLine(activeReminder.icon, activeReminder.label)) }}
+              onClick={() => { speak(reminderLineFor(lang, activeReminder.icon, activeReminder.label)) }}
               className="mt-5 w-full rounded-2xl border border-primary/30 bg-primary/10 px-5 py-3 font-bold text-primary hover:bg-primary/20"
             >
               🔊 Read Again

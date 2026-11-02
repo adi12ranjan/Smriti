@@ -2,6 +2,8 @@
 
 import { useState } from "react"
 import { Brain, ArrowRight } from "lucide-react"
+import { speakText } from "@/lib/tts"
+import { voiceLine } from "@/lib/voice-i18n"
 import { useApp, type Mood } from "@/components/app-provider"
 import type { LangCode } from "@/lib/i18n"
 
@@ -13,7 +15,7 @@ const MOODS: Mood[] = [
 ]
 
 export function Onboarding() {
-  const { languages, saveProfile, speak } = useApp()
+  const { languages, saveProfile, selectedVoiceName, voiceRate } = useApp()
   const [name, setName] = useState("")
   const [age, setAge] = useState("60+")
   const [language, setLanguage] = useState<LangCode>("en")
@@ -24,7 +26,8 @@ export function Onboarding() {
     if (!name.trim()) return
     saveProfile(name, age, language, mood)
     // The login button is a user action, so this also unlocks browser speech audio.
-    speak(`Namaste ${name.trim()}. Your Smriti is ready. Let us start.`)
+    // Speak in the language just chosen (app state updates after this call).
+    speakText(voiceLine(language, "ready", name.trim()), { lang: language, voiceName: selectedVoiceName, rate: voiceRate })
   }
 
   return (
