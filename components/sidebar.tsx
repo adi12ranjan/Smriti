@@ -10,6 +10,8 @@ import {
   Brain,
   LogOut,
   Phone,
+  Moon,
+  Sun,
 } from "lucide-react"
 import { useApp, type PageId } from "@/components/app-provider"
 import type { TKey } from "@/lib/i18n"
@@ -24,7 +26,7 @@ const NAV: { id: PageId; icon: typeof Brain; labelKey: TKey }[] = [
 ]
 
 export function Sidebar() {
-  const { page, navigate, t, userName, logout, caregiverContact, toast } = useApp()
+  const { page, navigate, t, userName, logout, caregiverContact, toast, darkMode, setDarkMode } = useApp()
 
   return (
     <aside className="fixed inset-y-0 left-0 z-20 flex w-[76px] flex-col bg-sidebar px-3 py-6 text-sidebar-foreground md:w-64 md:px-4">
@@ -88,6 +90,14 @@ export function Sidebar() {
           </div>
         </div>
         <button
+          onClick={() => setDarkMode(!darkMode)}
+          aria-pressed={darkMode}
+          className="flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm font-semibold text-sidebar-foreground/65 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground transition-colors"
+        >
+          {darkMode ? <Sun className="size-4 shrink-0" /> : <Moon className="size-4 shrink-0" />}
+          <span>{darkMode ? "Light mode" : "Dark mode"}</span>
+        </button>
+        <button
           onClick={logout}
           className="flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm font-semibold text-sidebar-foreground/65 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground transition-colors"
         >
@@ -95,11 +105,20 @@ export function Sidebar() {
           <span>Logout</span>
         </button>
       </div>
+      {/* Mobile dark mode */}
+      <button
+        onClick={() => setDarkMode(!darkMode)}
+        title={darkMode ? "Light mode" : "Dark mode"}
+        aria-label={darkMode ? "Switch to light mode" : "Switch to dark mode"}
+        className="mt-auto flex items-center justify-center rounded-xl px-3 py-3 text-sidebar-foreground/65 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground transition-colors md:hidden"
+      >
+        {darkMode ? <Sun className="size-5" /> : <Moon className="size-5" />}
+      </button>
       {/* Mobile logout */}
       <button
         onClick={logout}
         title="Logout"
-        className="mt-auto flex items-center justify-center rounded-xl px-3 py-3 text-sidebar-foreground/65 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground transition-colors md:hidden"
+        className="mt-2 flex items-center justify-center rounded-xl px-3 py-3 text-sidebar-foreground/65 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground transition-colors md:hidden"
       >
         <LogOut className="size-5" />
       </button>

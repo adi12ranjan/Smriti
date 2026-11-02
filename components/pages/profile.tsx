@@ -1,6 +1,6 @@
 "use client"
 
-import { Volume2, Type, WifiOff, Languages, Minus, Plus, Contrast, Award } from "lucide-react"
+import { Volume2, Type, WifiOff, Languages, Minus, Plus, Contrast, Award, Moon } from "lucide-react"
 import { useApp } from "@/components/app-provider"
 import { Panel, Tag, Pill } from "@/components/ui-bits"
 
@@ -20,7 +20,7 @@ function computeBadges(gamesCompleted: number, streak: number, score: number): B
 export function Profile() {
   const {
     t, speakKey, textScale, setTextScale, navigate, lang, languages,
-    highContrast, setHighContrast, gamesCompleted, streak, score,
+    highContrast, setHighContrast, darkMode, setDarkMode, gamesCompleted, streak, score,
   } = useApp()
   const currentLang = languages.find((l) => l.code === lang)
   const badges = computeBadges(gamesCompleted, streak, score)
@@ -75,6 +75,28 @@ export function Profile() {
           </div>
           <div className="mt-2 flex justify-between text-sm text-muted-foreground"><span>Normal</span><b className="text-primary">{Math.round(textScale * 100)}%</b><span>Very large</span></div>
           <p className="mt-2 text-xs text-muted-foreground">Move the slider to make words easier to read. The size is saved for your next visit.</p>
+        </div>
+
+        <div className="border-b border-border py-4">
+          <div className="flex items-center justify-between">
+            <span className="flex items-center gap-3 font-bold">
+              <Moon className="size-5 text-primary" aria-hidden /> Dark mode
+            </span>
+            <button
+              onClick={() => setDarkMode(!darkMode)}
+              role="switch"
+              aria-checked={darkMode}
+              aria-label="Dark mode"
+              className={`relative h-8 w-14 rounded-full transition-colors ${darkMode ? "bg-primary" : "bg-muted"}`}
+            >
+              <span
+                className={`absolute top-1 size-6 rounded-full bg-card shadow transition-transform ${
+                  darkMode ? "translate-x-7" : "translate-x-1"
+                }`}
+              />
+            </button>
+          </div>
+          <p className="mt-2 text-xs text-muted-foreground">Darker colors that are easier on the eyes in the evening or low light.</p>
         </div>
 
         <div className="border-b border-border py-4">

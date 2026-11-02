@@ -119,6 +119,8 @@ type AppContextType = {
   speakLine: (key: LineKey, arg?: string) => void
   voiceRate: number
   setVoiceRate: (v: number) => void
+  darkMode: boolean
+  setDarkMode: (v: boolean) => void
   textScale: number
   setTextScale: (v: number) => void
   userName: string
@@ -201,6 +203,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([])
   const [voiceRate, setVoiceRateState] = useState(DEFAULT_RATE)
 
+  // Dark mode (device-level preference, stored in this browser)
+  const [darkMode, setDarkModeState] = useState(false)
+
   // Accessibility
   const [highContrast, setHighContrastState] = useState(false)
 
@@ -228,6 +233,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
     load()
     window.speechSynthesis.addEventListener?.("voiceschanged", load)
     return () => { window.speechSynthesis.removeEventListener?.("voiceschanged", load) }
+  }, [])
+
+  // Dark mode: read saved choice once, then keep <html> class in sync.
+  useEffect(() => {
+    try {
+      if (window.localStorage.getItem("smriti.theme") === "dark") setDarkModeState(true)
+    } catch {}
+  }, [])
+  useEffect(() => {
+    const root = document.documentElement
+    root.classList.toggle("dark", darkMode)
+    root.classList.toggle("light", !darkMode)
+  }, [darkMode])
+  const setDarkMode = useCallback((v: boolean) => {
+    setDarkModeState(v)
+    try { window.localStorage.setItem("smriti.theme", v ? "dark" : "light") } catch {}
   }, [])
 
   // Speaking speed (device-level preference)
@@ -569,7 +590,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const value = useMemo<AppContextType>(
     () => ({
       lang, setLang, t, languages: LANGUAGES, page, navigate,
-      speak, speakKey, speakLine, voiceRate, setVoiceRate, textScale, setTextScale,
+      speak, speakKey, speakLine, voiceRate, setVoiceRate, darkMode, setDarkMode, textScale, setTextScale,
       userName, userAge, onboardingDone, saveProfile,
       reminders, toggleReminder, deleteReminder, addReminder,
       mood, cycleMood, moods: MOODS, setMood,
@@ -582,7 +603,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       caregiverContact, setCaregiverContact, shoutouts, addShoutout,
     }),
     [
-      lang, setLang, t, page, navigate, speak, speakKey, speakLine, voiceRate, setVoiceRate, textScale, setTextScale,
+      lang, setLang, t, page, navigate, speak, speakKey, speakLine, voiceRate, setVoiceRate, darkMode, setDarkMode, textScale, setTextScale,
       userName, userAge, onboardingDone, saveProfile,
       reminders, toggleReminder, deleteReminder, addReminder,
       mood, cycleMood, setMood, toast, toastMsg,
